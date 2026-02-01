@@ -2045,27 +2045,59 @@ Plumber,Super,80`;
                 <div className="text-xs text-slate-500 mt-1">Additional fixed costs/losses (e.g., implementation, marketing)</div>
               </div>
 
-              {/* Add-On Loss Rate for Current Bundle */}
-              {results && results.currentAddOnRevenue > 0 && (
+              {/* Add-On Loss Rates for All Bundles in Category */}
+              {addOnData[selectedCategory] && Object.keys(addOnData[selectedCategory]).length > 0 && (
                 <div className="border-t border-slate-700 pt-3">
-                  <label className="block text-sm text-slate-400 mb-2">
-                    Add-On Loss Rate for {selectedBundle} in {selectedCategory}: <span className="text-purple-400 font-bold">{addOnLossRates[selectedCategory]?.[selectedBundle] || 0}%</span>
-                  </label>
-                  <input
-                    type="range"
-                    min="0"
-                    max="100"
-                    value={addOnLossRates[selectedCategory]?.[selectedBundle] || 0}
-                    onChange={(e) => {
-                      const newRates = { ...addOnLossRates };
-                      if (!newRates[selectedCategory]) newRates[selectedCategory] = {};
-                      newRates[selectedCategory][selectedBundle] = Number(e.target.value);
-                      setAddOnLossRates(newRates);
-                    }}
-                    className="w-full h-2 bg-slate-600 rounded-lg appearance-none cursor-pointer"
-                  />
-                  <div className="text-xs text-slate-500 mt-1">
-                    Current add-on: {results.currentAddOnRevenue.toFixed(2)} KD ({results.avgAddOnPerCustomer.toFixed(2)} KD/customer)
+                  <div className="text-sm text-slate-300 font-semibold mb-3">
+                    Add-On Loss Rates for {selectedCategory}
+                  </div>
+                  <div className="space-y-3 max-h-80 overflow-y-auto">
+                    {Object.entries(addOnData[selectedCategory])
+                      .sort((a, b) => {
+                        const orderA = BUNDLE_TIER_ORDER[a[0]] ?? 999;
+                        const orderB = BUNDLE_TIER_ORDER[b[0]] ?? 999;
+                        return orderA - orderB;
+                      })
+                      .map(([bundle, revenue]) => {
+                        const currentRate = addOnLossRates[selectedCategory]?.[bundle] || 0;
+                        const isSelected = bundle === selectedBundle;
+                        return (
+                          <div 
+                            key={bundle} 
+                            className={`bg-slate-700/30 rounded p-2 ${isSelected ? 'ring-1 ring-purple-500' : ''}`}
+                          >
+                            <div className="flex items-center justify-between mb-1">
+                              <div className="flex items-center gap-2">
+                                <span className={`text-sm font-medium ${isSelected ? 'text-purple-400' : 'text-slate-300'}`}>
+                                  {bundle}
+                                </span>
+                                {isSelected && <span className="text-xs text-purple-400">(selected)</span>}
+                              </div>
+                              <div className="text-right">
+                                <div className="text-xs text-slate-400">{revenue.toFixed(0)} KD</div>
+                                <div className="text-sm font-bold text-purple-400">{currentRate}%</div>
+                              </div>
+                            </div>
+                            <input
+                              type="range"
+                              min="0"
+                              max="100"
+                              value={currentRate}
+                              onChange={(e) => {
+                                const newRates = { ...addOnLossRates };
+                                if (!newRates[selectedCategory]) newRates[selectedCategory] = {};
+                                newRates[selectedCategory][bundle] = Number(e.target.value);
+                                setAddOnLossRates(newRates);
+                              }}
+                              className="w-full h-1.5 bg-slate-600 rounded-lg appearance-none cursor-pointer"
+                            />
+                          </div>
+                        );
+                      })
+                    }
+                  </div>
+                  <div className="text-xs text-slate-500 mt-2">
+                    Set loss percentage (0-100%) for each bundle's add-on revenue
                   </div>
                 </div>
               )}
