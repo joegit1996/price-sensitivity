@@ -230,9 +230,22 @@ export default function PricingSimulator() {
   const [fixedKDLoss, setFixedKDLoss] = useState(0);
   const [showCalculations, setShowCalculations] = useState(false);
 
+  // A/B Testing state
+  const [abTestCategory, setAbTestCategory] = useState('AC Services');
+  const [abTestBundle, setAbTestBundle] = useState('Plus');
+  const [abTestPriceChange, setAbTestPriceChange] = useState(20);
+  const [abTestGroupSize, setAbTestGroupSize] = useState('');
+  const [abTestDuration, setAbTestDuration] = useState(60);
+  const [abTestName, setAbTestName] = useState('');
+  const [abTestResults, setAbTestResults] = useState(null);
+  const [savedAbTests, setSavedAbTests] = useState(() => {
+    const saved = localStorage.getItem('savedAbTests');
+    return saved ? JSON.parse(saved) : [];
+  });
+
   // Combine historical and custom data
   const bundleData = useMemo(() => {
-    if (activeTab === 'historical') {
+    if (activeTab === 'historical' || activeTab === 'abtest') {
       return historicalData;
     } else {
       return customScenarios;
@@ -248,6 +261,11 @@ export default function PricingSimulator() {
   useEffect(() => {
     localStorage.setItem('historicalData', JSON.stringify(historicalData));
   }, [historicalData]);
+
+  // Save A/B tests to localStorage
+  useEffect(() => {
+    localStorage.setItem('savedAbTests', JSON.stringify(savedAbTests));
+  }, [savedAbTests]);
 
   const categories = Object.keys(bundleData).sort();
   const hasData = categories.length > 0;
@@ -430,6 +448,193 @@ Plumber,Super,16.81,897`;
     a.download = 'historical_data_export.csv';
     a.click();
     window.URL.revokeObjectURL(url);
+  };
+
+  // A/B Test - Get category data for test design
+  const abTestCategoryData = historicalData[abTestCategory] || {};
+  const abTestAvailableBundles = Object.keys(abTestCategoryData).filter(b => abTestCategoryData[b]?.totalListings > 0);
+  const abTestBundleData = abTestCategoryData[abTestBundle] || {};
+  const abTestHigherBundles = getHigherTierBundles(abTestBundle, abTestAvailableBundles);
+  const abTestLowerBundles = getLowerTierBundles(abTestBundle, abTestAvailableBundles);
+
+  // A/B Test - Calculate sample size for statistical significance
+  const calculateSampleSize = (confidenceLevel = 0.95, power = 0.8, effectSize = 0.05) => {
+    // Simplified sample size calculation for proportion comparison
+    const zAlpha = confidenceLevel === 0.95 ? 1.96 : confidenceLevel === 0.99 ? 2.576 : 1.645;
+    const zBeta = power === 0.8 ? 0.84 : 1.28;
+    const p = 0.5; // assumed baseline proportion
+    const n = Math.ceil((2 * p * (1 - p) * Math.pow(zAlpha + zBeta, 2)) / Math.pow(effectSize, 2));
+    return n;
+  };
+
+  // A/B Test - Download results template CSV
+  const downloadAbTestTemplate = () => {
+    const bundles = abTestAvailableBundles.length > 0 ? abTestAvailableBundles : ['Basic', 'Plus', 'Super'];
+    let csv = 'Bundle,Listings\n';
+    bundles.forEach(bundle => {
+      csv += `${bundle},0\n`;
+    });
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'ab_test_results_template.csv';
+    a.click();
+    window.URL.revokeObjectURL(url);
+  };
+
+  // A/B Test - Upload and parse results CSV
+  const handleAbTestResultsUpload = (event) => {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    const startingSize = parseInt(abTestGroupSize) || abTestBundleData.totalListings || 0;
+    if (startingSize === 0) {
+      alert('Please enter the starting test group size first.');
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const text = e.target.result;
+        const lines = text.split('\n').filter(line => line.trim());
+        const headers = lines[0].split(',').map(h => h.trim().toLowerCase());
+        
+        const bundleIdx = headers.findIndex(h => h === 'bundle');
+        const listingsIdx = headers.findIndex(h => h === 'listings' || h === 'count');
+        
+        if (bundleIdx === -1 || listingsIdx === -1) {
+          alert('Invalid CSV format. Required columns: Bundle, Listings');
+          return;
+        }
+
+        const resultsByBundle = {};
+        let totalAfter = 0;
+
+        for (let i = 1; i < lines.length; i++) {
+          const values = lines[i].split(',').map(v => v.trim());
+          if (values.length > Math.max(bundleIdx, listingsIdx)) {
+            const bundle = values[bundleIdx];
+            const listings = parseInt(values[listingsIdx]) || 0;
+            if (bundle) {
+              resultsByBundle[bundle] = listings;
+              totalAfter += listings;
+            }
+          }
+        }
+
+        // Calculate percentages
+        const stayedCount = resultsByBundle[abTestBundle] || 0;
+        const churnedCount = startingSize - totalAfter;
+        
+        const stayedRate = (stayedCount / startingSize) * 100;
+        const churnRate = Math.max(0, (churnedCount / startingSize) * 100);
+        
+        // Calculate downgrade rates
+        const downgradeRates = {};
+        let totalDowngradeRate = 0;
+        abTestLowerBundles.forEach(bundle => {
+          const count = resultsByBundle[bundle] || 0;
+          const rate = (count / startingSize) * 100;
+          downgradeRates[bundle] = { count, rate: parseFloat(rate.toFixed(1)) };
+          totalDowngradeRate += rate;
+        });
+
+        // Calculate upgrade rates
+        const upgradeRates = {};
+        let totalUpgradeRate = 0;
+        abTestHigherBundles.forEach(bundle => {
+          const count = resultsByBundle[bundle] || 0;
+          const rate = (count / startingSize) * 100;
+          upgradeRates[bundle] = { count, rate: parseFloat(rate.toFixed(1)) };
+          totalUpgradeRate += rate;
+        });
+
+        // Calculate confidence based on sample size
+        const marginOfError = 1.96 * Math.sqrt((0.5 * 0.5) / startingSize) * 100;
+        let confidenceLevel = 'LOW';
+        if (startingSize >= 385) confidenceLevel = 'HIGH';
+        else if (startingSize >= 100) confidenceLevel = 'MEDIUM';
+
+        setAbTestResults({
+          startingSize,
+          totalAfter,
+          stayedCount,
+          churnedCount,
+          stayedRate: parseFloat(stayedRate.toFixed(1)),
+          churnRate: parseFloat(churnRate.toFixed(1)),
+          downgradeRates,
+          upgradeRates,
+          totalDowngradeRate: parseFloat(totalDowngradeRate.toFixed(1)),
+          totalUpgradeRate: parseFloat(totalUpgradeRate.toFixed(1)),
+          marginOfError: parseFloat(marginOfError.toFixed(1)),
+          confidenceLevel,
+          bundle: abTestBundle,
+          category: abTestCategory,
+          priceChange: abTestPriceChange,
+          duration: abTestDuration
+        });
+
+      } catch (error) {
+        alert('Error parsing CSV: ' + error.message);
+      }
+    };
+    reader.readAsText(file);
+    event.target.value = '';
+  };
+
+  // A/B Test - Apply results to simulator
+  const applyAbTestResults = (testResults) => {
+    setActiveTab('historical');
+    setSelectedCategory(testResults.category);
+    setSelectedBundle(testResults.bundle);
+    setPriceChange(testResults.priceChange);
+    setChurnRate(testResults.churnRate);
+    
+    // Set downgrade rates
+    const newDowngradeRates = {};
+    Object.entries(testResults.downgradeRates).forEach(([bundle, data]) => {
+      newDowngradeRates[bundle] = data.rate;
+    });
+    setDowngradeRates(newDowngradeRates);
+    
+    // Set upgrade rates
+    const newUpgradeRates = {};
+    Object.entries(testResults.upgradeRates).forEach(([bundle, data]) => {
+      newUpgradeRates[bundle] = data.rate;
+    });
+    setUpgradeRates(newUpgradeRates);
+  };
+
+  // A/B Test - Save test results
+  const saveAbTest = () => {
+    if (!abTestResults) {
+      alert('No test results to save. Please upload results first.');
+      return;
+    }
+    if (!abTestName.trim()) {
+      alert('Please enter a name for this test.');
+      return;
+    }
+
+    const newTest = {
+      id: Date.now(),
+      name: abTestName,
+      date: new Date().toISOString().split('T')[0],
+      ...abTestResults
+    };
+
+    setSavedAbTests([newTest, ...savedAbTests]);
+    setAbTestName('');
+    alert('Test saved successfully!');
+  };
+
+  // A/B Test - Delete saved test
+  const deleteAbTest = (testId) => {
+    if (confirm('Delete this saved test?')) {
+      setSavedAbTests(savedAbTests.filter(t => t.id !== testId));
+    }
   };
 
   // Add bundle to editing list
@@ -728,6 +933,16 @@ Plumber,Super,16.81,897`;
           >
             Custom Input
           </button>
+          <button
+            onClick={() => setActiveTab('abtest')}
+            className={`px-4 py-2 font-semibold transition-colors ${
+              activeTab === 'abtest'
+                ? 'text-blue-400 border-b-2 border-blue-400'
+                : 'text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            A/B Testing
+          </button>
         </div>
 
         {/* Historical Data Tab - Data Management */}
@@ -915,6 +1130,283 @@ Plumber,Super,16.81,897`;
                       </div>
                       <div className="text-xs text-slate-400">
                         {Object.keys(customScenarios[scenarioName]).length} bundles
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* A/B Testing Tab Content */}
+        {activeTab === 'abtest' && (
+          <div className="space-y-6 mb-6">
+            {/* Test Designer Section */}
+            <div className="bg-slate-800 rounded-lg p-6">
+              <h2 className="text-xl font-bold mb-4">Test Designer</h2>
+              <p className="text-slate-400 text-sm mb-4">Plan your A/B test before running it</p>
+              
+              <div className="grid md:grid-cols-2 gap-6">
+                {/* Test Configuration */}
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm text-slate-400 mb-1">Category</label>
+                    <select
+                      value={abTestCategory}
+                      onChange={(e) => {
+                        setAbTestCategory(e.target.value);
+                        const bundles = Object.keys(historicalData[e.target.value] || {});
+                        if (bundles.length > 0 && !bundles.includes(abTestBundle)) {
+                          setAbTestBundle(bundles[0]);
+                        }
+                      }}
+                      className="w-full bg-slate-700 border border-slate-600 rounded px-3 py-2 text-sm"
+                    >
+                      {Object.keys(historicalData).sort().map(cat => (
+                        <option key={cat} value={cat}>{cat}</option>
+                      ))}
+                    </select>
+                  </div>
+                  
+                  <div>
+                    <label className="block text-sm text-slate-400 mb-1">Bundle to Test</label>
+                    <select
+                      value={abTestBundle}
+                      onChange={(e) => setAbTestBundle(e.target.value)}
+                      className="w-full bg-slate-700 border border-slate-600 rounded px-3 py-2 text-sm"
+                    >
+                      {abTestAvailableBundles.map(bundle => (
+                        <option key={bundle} value={bundle}>
+                          {bundle} ({abTestCategoryData[bundle]?.avgCPL.toFixed(2)} KD, {abTestCategoryData[bundle]?.totalListings} listings)
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  
+                  <div>
+                    <label className="block text-sm text-slate-400 mb-1">
+                      Proposed Price Change: <span className="text-emerald-400 font-bold">+{abTestPriceChange}%</span>
+                    </label>
+                    <input
+                      type="range"
+                      min="5"
+                      max="50"
+                      value={abTestPriceChange}
+                      onChange={(e) => setAbTestPriceChange(Number(e.target.value))}
+                      className="w-full h-2 bg-slate-600 rounded-lg appearance-none cursor-pointer"
+                    />
+                    <div className="text-xs text-slate-500">
+                      New CPL: {((abTestBundleData.avgCPL || 0) * (1 + abTestPriceChange / 100)).toFixed(2)} KD
+                    </div>
+                  </div>
+                  
+                  <div>
+                    <label className="block text-sm text-slate-400 mb-1">Test Duration (days)</label>
+                    <input
+                      type="number"
+                      value={abTestDuration}
+                      onChange={(e) => setAbTestDuration(Number(e.target.value))}
+                      className="w-full bg-slate-700 border border-slate-600 rounded px-3 py-2 text-sm"
+                    />
+                  </div>
+                </div>
+                
+                {/* Test Recommendations */}
+                <div className="space-y-3">
+                  <div className="bg-slate-700/50 rounded-lg p-4">
+                    <div className="text-xs text-slate-400 mb-1">Recommended Sample Size</div>
+                    <div className="text-2xl font-bold text-blue-400">{calculateSampleSize()} customers</div>
+                    <div className="text-xs text-slate-500">For 95% confidence, 5% minimum detectable effect</div>
+                  </div>
+                  
+                  <div className="bg-slate-700/50 rounded-lg p-4">
+                    <div className="text-xs text-slate-400 mb-1">Available Customers</div>
+                    <div className="text-2xl font-bold text-emerald-400">{abTestBundleData.totalListings || 0}</div>
+                    <div className="text-xs text-slate-500">
+                      {(abTestBundleData.totalListings || 0) >= calculateSampleSize() 
+                        ? '✓ Sufficient for testing' 
+                        : '⚠ May need longer test duration'}
+                    </div>
+                  </div>
+                  
+                  <div className="bg-slate-700/50 rounded-lg p-4">
+                    <div className="text-xs text-slate-400 mb-1">Revenue at Risk (worst case 30% churn)</div>
+                    <div className="text-2xl font-bold text-amber-400">
+                      {Math.round((abTestBundleData.totalRevenue || 0) * 0.3).toLocaleString()} KD
+                    </div>
+                    <div className="text-xs text-slate-500">
+                      {(((abTestBundleData.totalRevenue || 0) * 0.3) / (Object.values(abTestCategoryData).reduce((sum, b) => sum + b.totalRevenue, 0) || 1) * 100).toFixed(1)}% of category revenue
+                    </div>
+                  </div>
+                  
+                  <div className="bg-slate-700/50 rounded-lg p-4">
+                    <div className="text-xs text-slate-400 mb-1">Suggested Duration</div>
+                    <div className="text-lg font-bold text-purple-400">30-60 days</div>
+                    <div className="text-xs text-slate-500">Allows time for customer decisions</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Results Importer Section */}
+            <div className="bg-slate-800 rounded-lg p-6">
+              <h2 className="text-xl font-bold mb-4">Import Test Results</h2>
+              <p className="text-slate-400 text-sm mb-4">Upload your A/B test results to calculate recommended percentages</p>
+              
+              <div className="grid md:grid-cols-2 gap-6">
+                {/* Import Configuration */}
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm text-slate-400 mb-1">Starting Test Group Size</label>
+                    <input
+                      type="number"
+                      value={abTestGroupSize}
+                      onChange={(e) => setAbTestGroupSize(e.target.value)}
+                      placeholder={`e.g., ${abTestBundleData.totalListings || 464}`}
+                      className="w-full bg-slate-700 border border-slate-600 rounded px-3 py-2 text-sm"
+                    />
+                    <div className="text-xs text-slate-500 mt-1">
+                      How many customers were in the test group at the start
+                    </div>
+                  </div>
+                  
+                  <div className="flex gap-3">
+                    <button
+                      onClick={downloadAbTestTemplate}
+                      className="px-4 py-2 bg-slate-700 hover:bg-slate-600 rounded text-sm transition-colors"
+                    >
+                      Download Template
+                    </button>
+                    <label className="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded text-sm cursor-pointer transition-colors">
+                      Upload Results CSV
+                      <input
+                        type="file"
+                        accept=".csv"
+                        onChange={handleAbTestResultsUpload}
+                        className="hidden"
+                      />
+                    </label>
+                  </div>
+                  
+                  <div className="bg-slate-700/30 rounded p-3 text-xs text-slate-400">
+                    <div className="font-semibold mb-1">CSV Format:</div>
+                    <pre className="text-slate-500">Bundle,Listings{'\n'}Plus,380{'\n'}Extra,23{'\n'}Super,14</pre>
+                  </div>
+                </div>
+                
+                {/* Results Display */}
+                <div>
+                  {abTestResults ? (
+                    <div className="space-y-3">
+                      <div className="bg-emerald-900/30 border border-emerald-700 rounded-lg p-4">
+                        <div className="text-sm font-semibold text-emerald-400 mb-3">Recommended Percentages</div>
+                        
+                        <div className="grid grid-cols-2 gap-2 text-sm">
+                          <div>
+                            <span className="text-slate-400">Churn Rate:</span>
+                          </div>
+                          <div className="font-bold text-red-400">{abTestResults.churnRate}%</div>
+                          
+                          <div className="col-span-2 border-t border-slate-700 my-1"></div>
+                          
+                          <div className="text-slate-400">Downgrade Total:</div>
+                          <div className="font-bold text-amber-400">{abTestResults.totalDowngradeRate}%</div>
+                          
+                          {Object.entries(abTestResults.downgradeRates).map(([bundle, data]) => (
+                            <React.Fragment key={bundle}>
+                              <div className="text-slate-500 pl-2">→ {bundle}:</div>
+                              <div className="text-amber-300">{data.rate}% ({data.count})</div>
+                            </React.Fragment>
+                          ))}
+                          
+                          <div className="col-span-2 border-t border-slate-700 my-1"></div>
+                          
+                          <div className="text-slate-400">Upgrade Total:</div>
+                          <div className="font-bold text-blue-400">{abTestResults.totalUpgradeRate}%</div>
+                          
+                          {Object.entries(abTestResults.upgradeRates).map(([bundle, data]) => (
+                            <React.Fragment key={bundle}>
+                              <div className="text-slate-500 pl-2">→ {bundle}:</div>
+                              <div className="text-blue-300">{data.rate}% ({data.count})</div>
+                            </React.Fragment>
+                          ))}
+                        </div>
+                        
+                        <div className="mt-3 pt-3 border-t border-slate-700">
+                          <div className="flex items-center gap-2 text-xs">
+                            <span className="text-slate-400">Confidence:</span>
+                            <span className={`font-bold ${
+                              abTestResults.confidenceLevel === 'HIGH' ? 'text-emerald-400' :
+                              abTestResults.confidenceLevel === 'MEDIUM' ? 'text-amber-400' : 'text-red-400'
+                            }`}>
+                              {abTestResults.confidenceLevel}
+                            </span>
+                            <span className="text-slate-500">(±{abTestResults.marginOfError}%)</span>
+                          </div>
+                        </div>
+                      </div>
+                      
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => applyAbTestResults(abTestResults)}
+                          className="flex-1 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 rounded text-sm font-semibold transition-colors"
+                        >
+                          Apply to Simulator
+                        </button>
+                        <input
+                          type="text"
+                          value={abTestName}
+                          onChange={(e) => setAbTestName(e.target.value)}
+                          placeholder="Test name..."
+                          className="flex-1 bg-slate-700 border border-slate-600 rounded px-3 py-2 text-sm"
+                        />
+                        <button
+                          onClick={saveAbTest}
+                          className="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded text-sm font-semibold transition-colors"
+                        >
+                          Save
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="bg-slate-700/30 rounded-lg p-8 text-center">
+                      <div className="text-slate-500 text-sm">Upload test results to see recommended percentages</div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Saved Tests Section */}
+            {savedAbTests.length > 0 && (
+              <div className="bg-slate-800 rounded-lg p-6">
+                <h2 className="text-xl font-bold mb-4">Saved Tests</h2>
+                <div className="space-y-2">
+                  {savedAbTests.map(test => (
+                    <div key={test.id} className="flex items-center justify-between bg-slate-700/50 rounded-lg p-3">
+                      <div>
+                        <div className="font-semibold">{test.name}</div>
+                        <div className="text-xs text-slate-400">
+                          {test.category} → {test.bundle} +{test.priceChange}% | {test.date}
+                        </div>
+                        <div className="text-xs text-slate-500">
+                          Churn: {test.churnRate}% | Down: {test.totalDowngradeRate}% | Up: {test.totalUpgradeRate}%
+                        </div>
+                      </div>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => applyAbTestResults(test)}
+                          className="px-3 py-1 bg-emerald-600 hover:bg-emerald-700 rounded text-xs transition-colors"
+                        >
+                          Apply
+                        </button>
+                        <button
+                          onClick={() => deleteAbTest(test.id)}
+                          className="px-3 py-1 bg-red-600/50 hover:bg-red-600 rounded text-xs transition-colors"
+                        >
+                          Delete
+                        </button>
                       </div>
                     </div>
                   ))}
