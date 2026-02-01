@@ -1,6 +1,20 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, BarChart, Bar, Cell, ReferenceLine } from 'recharts';
 
+// Default add-on revenue data (optional - can be uploaded via CSV)
+// Format: Category -> Bundle -> totalAddOnRevenue
+const defaultAddOnData = {
+  "AC Services": {
+    "Basic": 0,
+    "Standard": 0,
+    "Premium": 5,
+    "Extra": 20,
+    "Plus": 45,
+    "Super": 130,
+    "Optimum": 0
+  }
+};
+
 // Full dataset from Contracting bundles analysis CSV
 // Updated with custom input functionality
 const historicalBundleData = {
@@ -247,6 +261,26 @@ export default function PricingSimulator() {
     return saved ? JSON.parse(saved) : [];
   });
 
+  // Add-On Revenue state
+  const [addOnData, setAddOnData] = useState(() => {
+    const saved = localStorage.getItem('addOnData');
+    return saved ? JSON.parse(saved) : defaultAddOnData;
+  });
+  
+  // Add-On Loss Rates by tier (default 0% - optional input)
+  const [addOnLossRates, setAddOnLossRates] = useState(() => {
+    const saved = localStorage.getItem('addOnLossRates');
+    return saved ? JSON.parse(saved) : {
+      'Basic': 0,
+      'Standard': 0,
+      'Premium': 0,
+      'Extra': 0,
+      'Plus': 0,
+      'Super': 0,
+      'Optimum': 0
+    };
+  });
+
   // Combine historical and custom data
   const bundleData = useMemo(() => {
     if (activeTab === 'historical' || activeTab === 'abtest') {
@@ -270,6 +304,16 @@ export default function PricingSimulator() {
   useEffect(() => {
     localStorage.setItem('savedAbTests', JSON.stringify(savedAbTests));
   }, [savedAbTests]);
+
+  // Save add-on data to localStorage
+  useEffect(() => {
+    localStorage.setItem('addOnData', JSON.stringify(addOnData));
+  }, [addOnData]);
+
+  // Save add-on loss rates to localStorage
+  useEffect(() => {
+    localStorage.setItem('addOnLossRates', JSON.stringify(addOnLossRates));
+  }, [addOnLossRates]);
 
   const categories = Object.keys(bundleData).sort();
   const hasData = categories.length > 0;
@@ -452,6 +496,104 @@ Plumber,Super,16.81,897`;
     a.download = 'historical_data_export.csv';
     a.click();
     window.URL.revokeObjectURL(url);
+  };
+
+  // Add-On Data - Download template CSV
+  const downloadAddOnTemplate = () => {
+    const csv = `Category,Bundle,AddOnRevenue
+AC Services,Basic,0
+AC Services,Plus,45
+AC Services,Super,130
+Plumber,Basic,0
+Plumber,Plus,20
+Plumber,Super,80`;
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'addon_data_template.csv';
+    a.click();
+    window.URL.revokeObjectURL(url);
+  };
+
+  // Add-On Data - CSV Upload Handler
+  const handleAddOnCSVUpload = (event) => {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const text = e.target.result;
+        const lines = text.split('\n').filter(line => line.trim());
+        const headers = lines[0].split(',').map(h => h.trim().toLowerCase());
+        
+        const categoryIdx = headers.findIndex(h => h === 'category');
+        const bundleIdx = headers.findIndex(h => h === 'bundle');
+        const addOnIdx = headers.findIndex(h => h === 'addonrevenue' || h === 'addon_revenue' || h === 'addon');
+        
+        if (categoryIdx === -1 || bundleIdx === -1 || addOnIdx === -1) {
+          alert('Invalid CSV format. Required columns: Category, Bundle, AddOnRevenue');
+          return;
+        }
+
+        const newAddOnData = {};
+        let recordCount = 0;
+
+        for (let i = 1; i < lines.length; i++) {
+          const values = lines[i].split(',').map(v => v.trim());
+          if (values.length > Math.max(categoryIdx, bundleIdx, addOnIdx)) {
+            const category = values[categoryIdx];
+            const bundle = values[bundleIdx];
+            const addOnRevenue = parseFloat(values[addOnIdx]);
+
+            if (category && bundle && !isNaN(addOnRevenue)) {
+              if (!newAddOnData[category]) {
+                newAddOnData[category] = {};
+              }
+              newAddOnData[category][bundle] = addOnRevenue;
+              recordCount++;
+            }
+          }
+        }
+
+        if (recordCount === 0) {
+          alert('No valid add-on data found in CSV.');
+          return;
+        }
+
+        setAddOnData(newAddOnData);
+        alert(`Successfully loaded ${recordCount} add-on records across ${Object.keys(newAddOnData).length} categories.`);
+      } catch (error) {
+        alert('Error parsing CSV: ' + error.message);
+      }
+    };
+    reader.readAsText(file);
+    event.target.value = '';
+  };
+
+  // Add-On Data - Export current data as CSV
+  const exportAddOnData = () => {
+    let csv = 'Category,Bundle,AddOnRevenue\n';
+    Object.entries(addOnData).forEach(([category, bundles]) => {
+      Object.entries(bundles).forEach(([bundle, revenue]) => {
+        csv += `${category},${bundle},${revenue}\n`;
+      });
+    });
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'addon_data_export.csv';
+    a.click();
+    window.URL.revokeObjectURL(url);
+  };
+
+  // Add-On Data - Reset to defaults
+  const resetAddOnData = () => {
+    if (confirm('Reset add-on data to defaults? This will remove any uploaded data.')) {
+      setAddOnData(defaultAddOnData);
+    }
   };
 
   // A/B Test - Get category data for test design
@@ -758,6 +900,11 @@ Plumber,Super,16.81,897`;
     const currentListings = bundleInfo.totalListings;
     const currentRevenue = bundleInfo.totalRevenue;
     
+    // Get add-on revenue for current bundle
+    const currentAddOnRevenue = (addOnData[selectedCategory]?.[selectedBundle] || 0);
+    const avgAddOnPerCustomer = currentListings > 0 ? currentAddOnRevenue / currentListings : 0;
+    const addOnLossRate = (addOnLossRates[selectedBundle] || 0) / 100;
+    
     const newCPL = currentCPL * (1 + priceChange / 100);
     
     // Validate rates don't exceed 100%
@@ -771,6 +918,11 @@ Plumber,Super,16.81,897`;
     const churnedListings = currentListings * (effectiveChurn / 100);
     const totalDowngradeListings = currentListings * (effectiveDowngrade / 100);
     const totalUpgradeListings = currentListings * (effectiveUpgrade / 100);
+
+    // Calculate add-on revenue impact
+    const stayingAddOnRevenue = stayingListings * avgAddOnPerCustomer * (1 - addOnLossRate);
+    const lostAddOnRevenue = (churnedListings + totalDowngradeListings + totalUpgradeListings) * avgAddOnPerCustomer * addOnLossRate;
+    const newAddOnRevenue = currentAddOnRevenue - lostAddOnRevenue;
 
     // Calculate downgrade revenue per bundle and total
     const downgradeDetails = {};
@@ -800,23 +952,17 @@ Plumber,Super,16.81,897`;
     const newBundleRevenue = stayingListings * newCPL;
     const lostRevenue = churnedListings * currentCPL;
 
-    // Calculate net impact on category (now includes fixedKDLoss)
+    // Calculate net impact on category (includes add-on and fixedKDLoss)
     const oldCategoryRevenue = categoryTotals.totalRevenue;
     
-    // Net change = (new bundle revenue - old bundle revenue) + revenue from migrations - fixed loss
-    const netRevenueChange = (newBundleRevenue - currentRevenue) + downgradeRevenue + upgradeRevenue - fixedKDLoss;
+    // Net change = (new bundle revenue - old bundle revenue) + (new add-on - old add-on) + migrations - fixed loss
+    const cplRevenueChange = (newBundleRevenue - currentRevenue) + downgradeRevenue + upgradeRevenue;
+    const addOnRevenueChange = newAddOnRevenue - currentAddOnRevenue;
+    const netRevenueChange = cplRevenueChange + addOnRevenueChange - fixedKDLoss;
     const newCategoryRevenue = oldCategoryRevenue + netRevenueChange;
     const percentChange = (netRevenueChange / oldCategoryRevenue) * 100;
 
     // Break-even analysis (simplified - assuming no upgrades/downgrades)
-    // Formula: At what churn rate does (staying% × newPrice) = oldRevenue?
-    // Staying% = (100 - churn) / 100
-    // (100 - churn) / 100 × newPrice = oldRevenue
-    // (100 - churn) × newPrice = oldRevenue × 100
-    // 100 × newPrice - churn × newPrice = oldRevenue × 100
-    // churn = (100 × newPrice - oldRevenue × 100) / newPrice
-    // churn = ((newPrice - oldRevenue) × 100) / newPrice
-    // churn = (priceIncrease% × 100) / (100 + priceIncrease%)
     const breakEvenChurn = (priceChange * 100) / (100 + priceChange);
 
     return {
@@ -824,6 +970,9 @@ Plumber,Super,16.81,897`;
       newCPL,
       currentListings,
       currentRevenue,
+      currentAddOnRevenue,
+      avgAddOnPerCustomer,
+      addOnLossRate,
       stayRate,
       stayingListings,
       churnedListings,
@@ -835,6 +984,11 @@ Plumber,Super,16.81,897`;
       downgradeDetails,
       upgradeDetails,
       lostRevenue,
+      stayingAddOnRevenue,
+      lostAddOnRevenue,
+      newAddOnRevenue,
+      addOnRevenueChange,
+      cplRevenueChange,
       oldCategoryRevenue,
       newCategoryRevenue,
       netRevenueChange,
@@ -845,7 +999,7 @@ Plumber,Super,16.81,897`;
       effectiveUpgrade,
       fixedKDLoss,
     };
-  }, [hasData, categoryData, selectedBundle, priceChange, churnRate, downgradeRates, upgradeRates, totalDowngradeRate, totalUpgradeRate, fixedKDLoss, categoryTotals, isTopTier, isBottomTier, lowerBundles, higherBundles]);
+  }, [hasData, categoryData, selectedCategory, selectedBundle, priceChange, churnRate, downgradeRates, upgradeRates, totalDowngradeRate, totalUpgradeRate, fixedKDLoss, categoryTotals, isTopTier, isBottomTier, lowerBundles, higherBundles, addOnData, addOnLossRates]);
 
   // Build waterfall data for visualization
   const waterfallData = useMemo(() => {
