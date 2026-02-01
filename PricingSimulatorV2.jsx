@@ -1468,7 +1468,7 @@ Plumber,Super,16.81,897`;
         {/* Key Metrics */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
           <div className="bg-slate-800 rounded-lg p-3">
-            <div className="text-slate-400 text-xs">Category Revenue (12mo)</div>
+            <div className="text-slate-400 text-xs">Category Revenue</div>
             <div className="text-xl font-bold text-emerald-400">{categoryTotals.totalRevenue.toLocaleString()} KD</div>
           </div>
           <div className="bg-slate-800 rounded-lg p-3">
