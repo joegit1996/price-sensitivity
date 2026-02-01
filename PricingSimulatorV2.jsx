@@ -1486,6 +1486,91 @@ Plumber,Super,16.81,897`;
           </div>
         </div>
 
+        {/* Bundle Distribution Table */}
+        <div className="bg-slate-800 rounded-lg p-4 mb-6">
+          <h3 className="text-lg font-semibold mb-3">Bundle Distribution in {selectedCategory}</h3>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-slate-700">
+                  <th className="text-left py-2 px-3 text-slate-400 font-semibold">Bundle</th>
+                  <th className="text-right py-2 px-3 text-slate-400 font-semibold">CPL</th>
+                  <th className="text-right py-2 px-3 text-slate-400 font-semibold">Listings</th>
+                  <th className="text-right py-2 px-3 text-slate-400 font-semibold">Listings %</th>
+                  <th className="text-right py-2 px-3 text-slate-400 font-semibold">Revenue</th>
+                  <th className="text-right py-2 px-3 text-slate-400 font-semibold">Revenue %</th>
+                </tr>
+              </thead>
+              <tbody>
+                {BUNDLE_TIER_ORDER.filter(bundle => availableBundles.includes(bundle)).map(bundle => {
+                  const bundleInfo = categoryData[bundle];
+                  const listingsPct = ((bundleInfo.totalListings / categoryTotals.totalListings) * 100).toFixed(1);
+                  const revenuePct = ((bundleInfo.totalRevenue / categoryTotals.totalRevenue) * 100).toFixed(1);
+                  const isSelected = bundle === selectedBundle;
+                  
+                  return (
+                    <tr 
+                      key={bundle} 
+                      className={`border-b border-slate-700/50 ${isSelected ? 'bg-blue-900/20' : 'hover:bg-slate-700/30'}`}
+                    >
+                      <td className="py-2 px-3">
+                        <span className={`font-semibold ${isSelected ? 'text-blue-400' : 'text-white'}`}>
+                          {bundle} {isSelected && '●'}
+                        </span>
+                      </td>
+                      <td className="text-right py-2 px-3 text-purple-400 font-mono">
+                        {bundleInfo.avgCPL.toFixed(2)} KD
+                      </td>
+                      <td className="text-right py-2 px-3 text-orange-400 font-mono">
+                        {bundleInfo.totalListings.toLocaleString()}
+                      </td>
+                      <td className="text-right py-2 px-3">
+                        <div className="flex items-center justify-end gap-2">
+                          <div className="flex-1 max-w-[80px] h-2 bg-slate-700 rounded-full overflow-hidden">
+                            <div 
+                              className="h-full bg-orange-500"
+                              style={{ width: `${listingsPct}%` }}
+                            />
+                          </div>
+                          <span className="text-slate-300 font-mono w-12">{listingsPct}%</span>
+                        </div>
+                      </td>
+                      <td className="text-right py-2 px-3 text-emerald-400 font-mono">
+                        {bundleInfo.totalRevenue.toLocaleString()} KD
+                      </td>
+                      <td className="text-right py-2 px-3">
+                        <div className="flex items-center justify-end gap-2">
+                          <div className="flex-1 max-w-[80px] h-2 bg-slate-700 rounded-full overflow-hidden">
+                            <div 
+                              className="h-full bg-emerald-500"
+                              style={{ width: `${revenuePct}%` }}
+                            />
+                          </div>
+                          <span className="text-slate-300 font-mono w-12">{revenuePct}%</span>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+              <tfoot>
+                <tr className="border-t-2 border-slate-600 font-semibold">
+                  <td className="py-2 px-3 text-slate-300">Total</td>
+                  <td className="text-right py-2 px-3 text-slate-500">—</td>
+                  <td className="text-right py-2 px-3 text-orange-400 font-mono">
+                    {categoryTotals.totalListings.toLocaleString()}
+                  </td>
+                  <td className="text-right py-2 px-3 text-slate-300 font-mono">100.0%</td>
+                  <td className="text-right py-2 px-3 text-emerald-400 font-mono">
+                    {categoryTotals.totalRevenue.toLocaleString()} KD
+                  </td>
+                  <td className="text-right py-2 px-3 text-slate-300 font-mono">100.0%</td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        </div>
+
         <div className="grid md:grid-cols-3 gap-4 mb-6">
           {/* Controls */}
           <div className="bg-slate-800 rounded-lg p-4">
