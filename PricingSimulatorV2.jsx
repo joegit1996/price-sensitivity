@@ -1,187 +1,191 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, BarChart, Bar, Cell, ReferenceLine } from 'recharts';
 
-// Full dataset from your CSV (12 months, all categories)
+// Full dataset from Contracting bundles analysis CSV
 // Updated with custom input functionality
 const historicalBundleData = {
   "AC Services": {
-    "Basic": { "totalRevenue": 8662, "totalListings": 2751, "avgCPL": 3.15 },
-    "Extra": { "totalRevenue": 4039, "totalListings": 449, "avgCPL": 9.0 },
-    "Optimum": { "totalRevenue": 338, "totalListings": 11, "avgCPL": 30.73 },
-    "Plus": { "totalRevenue": 7998, "totalListings": 464, "avgCPL": 17.24 },
-    "Premium": { "totalRevenue": 263, "totalListings": 34, "avgCPL": 7.74 },
-    "Standard": { "totalRevenue": 358, "totalListings": 108, "avgCPL": 3.31 },
-    "Super": { "totalRevenue": 14518, "totalListings": 471, "avgCPL": 30.82 }
+    "Basic": { "totalRevenue": 495.42, "totalListings": 138, "avgCPL": 3.59 },
+    "Extra": { "totalRevenue": 124.08, "totalListings": 12, "avgCPL": 10.34 },
+    "Premium": { "totalRevenue": 22.5, "totalListings": 3, "avgCPL": 7.5 },
+    "Plus": { "totalRevenue": 418, "totalListings": 22, "avgCPL": 19.0 },
+    "Standard": { "totalRevenue": 17.5, "totalListings": 5, "avgCPL": 3.5 },
+    "Super": { "totalRevenue": 508.82, "totalListings": 13, "avgCPL": 39.14 }
+  },
+  "Agricultural Products": {
+    "Basic": { "totalRevenue": 69, "totalListings": 23, "avgCPL": 3.0 },
+    "Extra": { "totalRevenue": 6.75, "totalListings": 1, "avgCPL": 6.75 },
+    "Plus": { "totalRevenue": 12.25, "totalListings": 1, "avgCPL": 12.25 },
+    "Premium": { "totalRevenue": 7, "totalListings": 1, "avgCPL": 7.0 },
+    "Standard": { "totalRevenue": 18, "totalListings": 6, "avgCPL": 3.0 }
   },
   "Aluminum": {
-    "Basic": { "totalRevenue": 4944, "totalListings": 1844, "avgCPL": 2.68 },
-    "Extra": { "totalRevenue": 2022, "totalListings": 235, "avgCPL": 8.6 },
-    "Optimum": { "totalRevenue": 502, "totalListings": 14, "avgCPL": 35.86 },
-    "Plus": { "totalRevenue": 5979, "totalListings": 391, "avgCPL": 15.29 },
-    "Premium": { "totalRevenue": 295, "totalListings": 45, "avgCPL": 6.56 },
-    "Standard": { "totalRevenue": 255, "totalListings": 91, "avgCPL": 2.8 },
-    "Super": { "totalRevenue": 13813, "totalListings": 514, "avgCPL": 26.87 }
+    "Basic": { "totalRevenue": 468, "totalListings": 156, "avgCPL": 3.0 },
+    "Extra": { "totalRevenue": 296.75, "totalListings": 25, "avgCPL": 11.87 },
+    "Optimum": { "totalRevenue": 75, "totalListings": 2, "avgCPL": 37.5 },
+    "Plus": { "totalRevenue": 761.14, "totalListings": 38, "avgCPL": 20.03 },
+    "Premium": { "totalRevenue": 28, "totalListings": 4, "avgCPL": 7.0 },
+    "Standard": { "totalRevenue": 24, "totalListings": 8, "avgCPL": 3.0 },
+    "Super": { "totalRevenue": 2347.8, "totalListings": 65, "avgCPL": 36.12 }
   },
   "Bugs Exterminator": {
-    "Basic": { "totalRevenue": 1168, "totalListings": 538, "avgCPL": 2.17 },
-    "Extra": { "totalRevenue": 533, "totalListings": 95, "avgCPL": 5.61 },
-    "Optimum": { "totalRevenue": 217, "totalListings": 8, "avgCPL": 27.12 },
-    "Plus": { "totalRevenue": 1403, "totalListings": 169, "avgCPL": 8.3 },
-    "Premium": { "totalRevenue": 77, "totalListings": 12, "avgCPL": 6.42 },
-    "Standard": { "totalRevenue": 84, "totalListings": 29, "avgCPL": 2.9 },
-    "Super": { "totalRevenue": 4730, "totalListings": 307, "avgCPL": 15.41 }
+    "Basic": { "totalRevenue": 93, "totalListings": 31, "avgCPL": 3.0 },
+    "Extra": { "totalRevenue": 61.28, "totalListings": 8, "avgCPL": 7.66 },
+    "Optimum": { "totalRevenue": 37.5, "totalListings": 1, "avgCPL": 37.5 },
+    "Plus": { "totalRevenue": 111.24, "totalListings": 9, "avgCPL": 12.36 },
+    "Standard": { "totalRevenue": 3, "totalListings": 1, "avgCPL": 3.0 },
+    "Super": { "totalRevenue": 678.4, "totalListings": 32, "avgCPL": 21.2 }
   },
   "Builders": {
-    "Basic": { "totalRevenue": 6676, "totalListings": 2415, "avgCPL": 2.76 },
-    "Extra": { "totalRevenue": 3374, "totalListings": 432, "avgCPL": 7.81 },
-    "Optimum": { "totalRevenue": 321, "totalListings": 11, "avgCPL": 29.18 },
-    "Plus": { "totalRevenue": 7435, "totalListings": 511, "avgCPL": 14.55 },
-    "Premium": { "totalRevenue": 532, "totalListings": 84, "avgCPL": 6.33 },
-    "Standard": { "totalRevenue": 559, "totalListings": 193, "avgCPL": 2.9 },
-    "Super": { "totalRevenue": 7360, "totalListings": 274, "avgCPL": 26.86 }
+    "Basic": { "totalRevenue": 658, "totalListings": 188, "avgCPL": 3.5 },
+    "Extra": { "totalRevenue": 551.1, "totalListings": 55, "avgCPL": 10.02 },
+    "Optimum": { "totalRevenue": 112.5, "totalListings": 3, "avgCPL": 37.5 },
+    "Plus": { "totalRevenue": 964.07, "totalListings": 53, "avgCPL": 18.19 },
+    "Premium": { "totalRevenue": 49, "totalListings": 7, "avgCPL": 7.0 },
+    "Standard": { "totalRevenue": 84, "totalListings": 24, "avgCPL": 3.5 },
+    "Super": { "totalRevenue": 1405.95, "totalListings": 35, "avgCPL": 40.17 }
   },
   "Building Materials": {
-    "Basic": { "totalRevenue": 953, "totalListings": 333, "avgCPL": 2.86 },
-    "Extra": { "totalRevenue": 396, "totalListings": 57, "avgCPL": 6.95 },
-    "Optimum": { "totalRevenue": 114, "totalListings": 3, "avgCPL": 38.0 },
-    "Plus": { "totalRevenue": 686, "totalListings": 54, "avgCPL": 12.7 },
-    "Premium": { "totalRevenue": 45, "totalListings": 7, "avgCPL": 6.43 },
-    "Standard": { "totalRevenue": 41, "totalListings": 15, "avgCPL": 2.73 },
-    "Super": { "totalRevenue": 1156, "totalListings": 62, "avgCPL": 18.65 }
+    "Basic": { "totalRevenue": 60, "totalListings": 20, "avgCPL": 3.0 },
+    "Extra": { "totalRevenue": 21, "totalListings": 3, "avgCPL": 7.0 },
+    "Optimum": { "totalRevenue": 37.5, "totalListings": 1, "avgCPL": 37.5 },
+    "Plus": { "totalRevenue": 46, "totalListings": 4, "avgCPL": 11.5 },
+    "Premium": { "totalRevenue": 14, "totalListings": 2, "avgCPL": 7.0 },
+    "Standard": { "totalRevenue": 6, "totalListings": 2, "avgCPL": 3.0 },
+    "Super": { "totalRevenue": 197.1, "totalListings": 9, "avgCPL": 21.9 }
   },
   "Carpenter": {
-    "Basic": { "totalRevenue": 5309, "totalListings": 1992, "avgCPL": 2.67 },
-    "Extra": { "totalRevenue": 2078, "totalListings": 242, "avgCPL": 8.59 },
-    "Optimum": { "totalRevenue": 145, "totalListings": 5, "avgCPL": 29.0 },
-    "Plus": { "totalRevenue": 4289, "totalListings": 282, "avgCPL": 15.21 },
-    "Premium": { "totalRevenue": 450, "totalListings": 72, "avgCPL": 6.25 },
-    "Standard": { "totalRevenue": 218, "totalListings": 84, "avgCPL": 2.6 },
-    "Super": { "totalRevenue": 5396, "totalListings": 210, "avgCPL": 25.7 }
+    "Basic": { "totalRevenue": 543, "totalListings": 181, "avgCPL": 3.0 },
+    "Extra": { "totalRevenue": 311.65, "totalListings": 23, "avgCPL": 13.55 },
+    "Optimum": { "totalRevenue": 37.5, "totalListings": 1, "avgCPL": 37.5 },
+    "Plus": { "totalRevenue": 594.81, "totalListings": 27, "avgCPL": 22.03 },
+    "Premium": { "totalRevenue": 49, "totalListings": 7, "avgCPL": 7.0 },
+    "Standard": { "totalRevenue": 15, "totalListings": 5, "avgCPL": 3.0 },
+    "Super": { "totalRevenue": 1220.6, "totalListings": 34, "avgCPL": 35.9 }
   },
   "Ceramic": {
-    "Basic": { "totalRevenue": 5452, "totalListings": 1978, "avgCPL": 2.76 },
-    "Extra": { "totalRevenue": 2620, "totalListings": 341, "avgCPL": 7.68 },
-    "Optimum": { "totalRevenue": 277, "totalListings": 9, "avgCPL": 30.78 },
-    "Plus": { "totalRevenue": 4217, "totalListings": 341, "avgCPL": 12.37 },
-    "Premium": { "totalRevenue": 336, "totalListings": 51, "avgCPL": 6.59 },
-    "Standard": { "totalRevenue": 320, "totalListings": 120, "avgCPL": 2.67 },
-    "Super": { "totalRevenue": 9491, "totalListings": 541, "avgCPL": 17.54 }
+    "Basic": { "totalRevenue": 468, "totalListings": 156, "avgCPL": 3.0 },
+    "Extra": { "totalRevenue": 243.6, "totalListings": 29, "avgCPL": 8.4 },
+    "Plus": { "totalRevenue": 580.15, "totalListings": 41, "avgCPL": 14.15 },
+    "Premium": { "totalRevenue": 21, "totalListings": 3, "avgCPL": 7.0 },
+    "Standard": { "totalRevenue": 33, "totalListings": 11, "avgCPL": 3.0 },
+    "Super": { "totalRevenue": 1675.8, "totalListings": 76, "avgCPL": 22.05 }
   },
   "Decoration": {
-    "Basic": { "totalRevenue": 5585, "totalListings": 1964, "avgCPL": 2.84 },
-    "Extra": { "totalRevenue": 3096, "totalListings": 326, "avgCPL": 9.5 },
-    "Optimum": { "totalRevenue": 735, "totalListings": 24, "avgCPL": 30.62 },
-    "Plus": { "totalRevenue": 7921, "totalListings": 506, "avgCPL": 15.65 },
-    "Premium": { "totalRevenue": 421, "totalListings": 68, "avgCPL": 6.19 },
-    "Standard": { "totalRevenue": 461, "totalListings": 155, "avgCPL": 2.97 },
-    "Super": { "totalRevenue": 8950, "totalListings": 378, "avgCPL": 23.68 }
+    "Basic": { "totalRevenue": 558.48, "totalListings": 156, "avgCPL": 3.58 },
+    "Extra": { "totalRevenue": 447.78, "totalListings": 34, "avgCPL": 13.17 },
+    "Optimum": { "totalRevenue": 37.5, "totalListings": 1, "avgCPL": 37.5 },
+    "Plus": { "totalRevenue": 884.4, "totalListings": 40, "avgCPL": 22.11 },
+    "Premium": { "totalRevenue": 63, "totalListings": 9, "avgCPL": 7.0 },
+    "Standard": { "totalRevenue": 21, "totalListings": 6, "avgCPL": 3.5 },
+    "Super": { "totalRevenue": 1771.68, "totalListings": 48, "avgCPL": 36.91 }
   },
   "Doors": {
-    "Basic": { "totalRevenue": 549, "totalListings": 210, "avgCPL": 2.61 },
-    "Extra": { "totalRevenue": 227, "totalListings": 33, "avgCPL": 6.88 },
-    "Optimum": { "totalRevenue": 83, "totalListings": 2, "avgCPL": 41.5 },
-    "Plus": { "totalRevenue": 632, "totalListings": 59, "avgCPL": 10.71 },
-    "Premium": { "totalRevenue": 14, "totalListings": 2, "avgCPL": 7.0 },
-    "Standard": { "totalRevenue": 128, "totalListings": 58, "avgCPL": 2.21 },
-    "Super": { "totalRevenue": 1306, "totalListings": 74, "avgCPL": 17.65 }
+    "Basic": { "totalRevenue": 78, "totalListings": 26, "avgCPL": 3.0 },
+    "Extra": { "totalRevenue": 37.5, "totalListings": 5, "avgCPL": 7.5 },
+    "Optimum": { "totalRevenue": 37.5, "totalListings": 1, "avgCPL": 37.5 },
+    "Plus": { "totalRevenue": 116.55, "totalListings": 9, "avgCPL": 12.95 },
+    "Standard": { "totalRevenue": 24, "totalListings": 8, "avgCPL": 3.0 },
+    "Super": { "totalRevenue": 247.5, "totalListings": 11, "avgCPL": 22.5 }
+  },
+  "Duct Cleaning": {
+    "Basic": { "totalRevenue": 407.7, "totalListings": 135, "avgCPL": 3.02 },
+    "Extra": { "totalRevenue": 62.5, "totalListings": 10, "avgCPL": 6.25 },
+    "Optimum": { "totalRevenue": 37.5, "totalListings": 1, "avgCPL": 37.5 },
+    "Plus": { "totalRevenue": 34.5, "totalListings": 3, "avgCPL": 11.5 },
+    "Premium": { "totalRevenue": 7, "totalListings": 1, "avgCPL": 7.0 },
+    "Super": { "totalRevenue": 560.86, "totalListings": 29, "avgCPL": 19.34 }
   },
   "Electrician": {
-    "Basic": { "totalRevenue": 3086, "totalListings": 1118, "avgCPL": 2.76 },
-    "Extra": { "totalRevenue": 1206, "totalListings": 158, "avgCPL": 7.63 },
-    "Optimum": { "totalRevenue": 281, "totalListings": 8, "avgCPL": 35.12 },
-    "Plus": { "totalRevenue": 2260, "totalListings": 187, "avgCPL": 12.09 },
-    "Premium": { "totalRevenue": 246, "totalListings": 39, "avgCPL": 6.31 },
-    "Standard": { "totalRevenue": 163, "totalListings": 57, "avgCPL": 2.86 },
-    "Super": { "totalRevenue": 5626, "totalListings": 340, "avgCPL": 16.55 }
+    "Basic": { "totalRevenue": 348, "totalListings": 116, "avgCPL": 3.0 },
+    "Extra": { "totalRevenue": 164.22, "totalListings": 21, "avgCPL": 7.82 },
+    "Plus": { "totalRevenue": 279.93, "totalListings": 21, "avgCPL": 13.33 },
+    "Premium": { "totalRevenue": 14, "totalListings": 2, "avgCPL": 7.0 },
+    "Standard": { "totalRevenue": 6, "totalListings": 2, "avgCPL": 3.0 },
+    "Super": { "totalRevenue": 807.84, "totalListings": 36, "avgCPL": 22.44 }
+  },
+  "Elevators": {
+    "Basic": { "totalRevenue": 12, "totalListings": 4, "avgCPL": 3.0 },
+    "Extra": { "totalRevenue": 11.5, "totalListings": 2, "avgCPL": 5.75 },
+    "Super": { "totalRevenue": 122.22, "totalListings": 6, "avgCPL": 20.37 }
   },
   "Gardener": {
-    "Basic": { "totalRevenue": 4169, "totalListings": 1558, "avgCPL": 2.68 },
-    "Extra": { "totalRevenue": 1514, "totalListings": 193, "avgCPL": 7.84 },
-    "Optimum": { "totalRevenue": 136, "totalListings": 6, "avgCPL": 22.67 },
-    "Plus": { "totalRevenue": 1847, "totalListings": 144, "avgCPL": 12.83 },
-    "Premium": { "totalRevenue": 387, "totalListings": 58, "avgCPL": 6.67 },
-    "Standard": { "totalRevenue": 256, "totalListings": 87, "avgCPL": 2.94 },
-    "Super": { "totalRevenue": 4306, "totalListings": 277, "avgCPL": 15.55 }
+    "Basic": { "totalRevenue": 459, "totalListings": 153, "avgCPL": 3.0 },
+    "Extra": { "totalRevenue": 222.24, "totalListings": 24, "avgCPL": 9.26 },
+    "Plus": { "totalRevenue": 259.04, "totalListings": 16, "avgCPL": 16.19 },
+    "Premium": { "totalRevenue": 35, "totalListings": 5, "avgCPL": 7.0 },
+    "Standard": { "totalRevenue": 18, "totalListings": 6, "avgCPL": 3.0 },
+    "Super": { "totalRevenue": 1189.92, "totalListings": 48, "avgCPL": 24.79 }
   },
   "Glass": {
-    "Basic": { "totalRevenue": 3121, "totalListings": 1076, "avgCPL": 2.9 },
-    "Extra": { "totalRevenue": 892, "totalListings": 135, "avgCPL": 6.61 },
-    "Optimum": { "totalRevenue": 76, "totalListings": 2, "avgCPL": 38.0 },
-    "Plus": { "totalRevenue": 1558, "totalListings": 131, "avgCPL": 11.89 },
-    "Premium": { "totalRevenue": 106, "totalListings": 17, "avgCPL": 6.24 },
-    "Standard": { "totalRevenue": 155, "totalListings": 58, "avgCPL": 2.67 },
-    "Super": { "totalRevenue": 1929, "totalListings": 120, "avgCPL": 16.07 }
+    "Basic": { "totalRevenue": 301.99, "totalListings": 101, "avgCPL": 2.99 },
+    "Extra": { "totalRevenue": 189.5, "totalListings": 25, "avgCPL": 7.58 },
+    "Plus": { "totalRevenue": 115.29, "totalListings": 9, "avgCPL": 12.81 },
+    "Premium": { "totalRevenue": 7, "totalListings": 1, "avgCPL": 7.0 },
+    "Standard": { "totalRevenue": 15, "totalListings": 5, "avgCPL": 3.0 },
+    "Super": { "totalRevenue": 576.48, "totalListings": 24, "avgCPL": 24.02 }
   },
   "Home Appliances Maintenance": {
-    "Basic": { "totalRevenue": 5067, "totalListings": 2013, "avgCPL": 2.52 },
-    "Extra": { "totalRevenue": 747, "totalListings": 104, "avgCPL": 7.18 },
-    "Optimum": { "totalRevenue": 233, "totalListings": 8, "avgCPL": 29.12 },
-    "Plus": { "totalRevenue": 1860, "totalListings": 146, "avgCPL": 12.74 },
-    "Premium": { "totalRevenue": 68, "totalListings": 12, "avgCPL": 5.67 },
-    "Standard": { "totalRevenue": 792, "totalListings": 266, "avgCPL": 2.98 },
-    "Super": { "totalRevenue": 7924, "totalListings": 445, "avgCPL": 17.81 }
+    "Basic": { "totalRevenue": 567, "totalListings": 189, "avgCPL": 3.0 },
+    "Extra": { "totalRevenue": 65.1, "totalListings": 6, "avgCPL": 10.85 },
+    "Plus": { "totalRevenue": 165.6, "totalListings": 10, "avgCPL": 16.56 },
+    "Premium": { "totalRevenue": 14, "totalListings": 2, "avgCPL": 7.0 },
+    "Standard": { "totalRevenue": 75, "totalListings": 25, "avgCPL": 3.0 },
+    "Super": { "totalRevenue": 1610.24, "totalListings": 64, "avgCPL": 25.16 }
   },
   "Insulated Roof": {
-    "Basic": { "totalRevenue": 2364, "totalListings": 927, "avgCPL": 2.55 },
-    "Extra": { "totalRevenue": 1128, "totalListings": 148, "avgCPL": 7.62 },
-    "Optimum": { "totalRevenue": 29, "totalListings": 1, "avgCPL": 29.0 },
-    "Plus": { "totalRevenue": 1418, "totalListings": 108, "avgCPL": 13.13 },
-    "Premium": { "totalRevenue": 120, "totalListings": 18, "avgCPL": 6.67 },
-    "Standard": { "totalRevenue": 104, "totalListings": 40, "avgCPL": 2.6 },
-    "Super": { "totalRevenue": 2865, "totalListings": 123, "avgCPL": 23.29 }
+    "Basic": { "totalRevenue": 273, "totalListings": 91, "avgCPL": 3.0 },
+    "Extra": { "totalRevenue": 218.73, "totalListings": 23, "avgCPL": 9.51 },
+    "Plus": { "totalRevenue": 221.04, "totalListings": 12, "avgCPL": 18.42 },
+    "Premium": { "totalRevenue": 7, "totalListings": 1, "avgCPL": 7.0 },
+    "Standard": { "totalRevenue": 18, "totalListings": 6, "avgCPL": 3.0 },
+    "Super": { "totalRevenue": 454.65, "totalListings": 15, "avgCPL": 30.31 }
   },
   "Locksmith": {
-    "Basic": { "totalRevenue": 3040, "totalListings": 1265, "avgCPL": 2.4 },
-    "Extra": { "totalRevenue": 294, "totalListings": 44, "avgCPL": 6.68 },
-    "Optimum": { "totalRevenue": 57, "totalListings": 2, "avgCPL": 28.5 },
-    "Plus": { "totalRevenue": 1329, "totalListings": 134, "avgCPL": 9.92 },
-    "Premium": { "totalRevenue": 28, "totalListings": 4, "avgCPL": 7.0 },
-    "Standard": { "totalRevenue": 44, "totalListings": 25, "avgCPL": 1.76 },
-    "Super": { "totalRevenue": 2489, "totalListings": 193, "avgCPL": 12.9 }
+    "Basic": { "totalRevenue": 456, "totalListings": 152, "avgCPL": 3.0 },
+    "Extra": { "totalRevenue": 31.5, "totalListings": 3, "avgCPL": 10.5 },
+    "Plus": { "totalRevenue": 199.29, "totalListings": 13, "avgCPL": 15.33 },
+    "Standard": { "totalRevenue": 15, "totalListings": 5, "avgCPL": 3.0 },
+    "Super": { "totalRevenue": 551.75, "totalListings": 25, "avgCPL": 22.07 }
   },
   "Metalwork": {
-    "Basic": { "totalRevenue": 6116, "totalListings": 2106, "avgCPL": 2.9 },
-    "Extra": { "totalRevenue": 4156, "totalListings": 469, "avgCPL": 8.86 },
-    "Optimum": { "totalRevenue": 322, "totalListings": 10, "avgCPL": 32.2 },
-    "Plus": { "totalRevenue": 6572, "totalListings": 507, "avgCPL": 12.96 },
-    "Premium": { "totalRevenue": 385, "totalListings": 68, "avgCPL": 5.66 },
-    "Standard": { "totalRevenue": 466, "totalListings": 159, "avgCPL": 2.93 },
-    "Super": { "totalRevenue": 10667, "totalListings": 597, "avgCPL": 17.87 }
+    "Basic": { "totalRevenue": 388.5, "totalListings": 111, "avgCPL": 3.5 },
+    "Extra": { "totalRevenue": 319.44, "totalListings": 33, "avgCPL": 9.68 },
+    "Optimum": { "totalRevenue": 37.5, "totalListings": 1, "avgCPL": 37.5 },
+    "Plus": { "totalRevenue": 609.6, "totalListings": 40, "avgCPL": 15.24 },
+    "Premium": { "totalRevenue": 21, "totalListings": 3, "avgCPL": 7.0 },
+    "Standard": { "totalRevenue": 28, "totalListings": 8, "avgCPL": 3.5 },
+    "Super": { "totalRevenue": 2188.8, "totalListings": 80, "avgCPL": 27.36 }
   },
   "Painter": {
-    "Basic": { "totalRevenue": 7465, "totalListings": 3065, "avgCPL": 2.44 },
-    "Extra": { "totalRevenue": 3763, "totalListings": 1924, "avgCPL": 1.96 },
-    "Optimum": { "totalRevenue": 435, "totalListings": 16, "avgCPL": 27.19 },
-    "Plus": { "totalRevenue": 6891, "totalListings": 443, "avgCPL": 15.56 },
-    "Premium": { "totalRevenue": 543, "totalListings": 86, "avgCPL": 6.31 },
-    "Standard": { "totalRevenue": 588, "totalListings": 225, "avgCPL": 2.61 },
-    "Super": { "totalRevenue": 11207, "totalListings": 461, "avgCPL": 24.31 }
+    "Basic": { "totalRevenue": 770, "totalListings": 220, "avgCPL": 3.5 },
+    "Extra": { "totalRevenue": 413.4, "totalListings": 30, "avgCPL": 13.78 },
+    "Optimum": { "totalRevenue": 112.5, "totalListings": 3, "avgCPL": 37.5 },
+    "Plus": { "totalRevenue": 1203.8, "totalListings": 52, "avgCPL": 23.15 },
+    "Premium": { "totalRevenue": 49, "totalListings": 7, "avgCPL": 7.0 },
+    "Standard": { "totalRevenue": 52.5, "totalListings": 15, "avgCPL": 3.5 },
+    "Super": { "totalRevenue": 2779.84, "totalListings": 68, "avgCPL": 40.88 }
   },
   "Plumber": {
-    "Basic": { "totalRevenue": 6425, "totalListings": 2614, "avgCPL": 2.46 },
-    "Extra": { "totalRevenue": 2195, "totalListings": 252, "avgCPL": 8.71 },
-    "Optimum": { "totalRevenue": 620, "totalListings": 20, "avgCPL": 31.0 },
-    "Plus": { "totalRevenue": 3553, "totalListings": 272, "avgCPL": 13.06 },
-    "Premium": { "totalRevenue": 268, "totalListings": 46, "avgCPL": 5.83 },
-    "Standard": { "totalRevenue": 409, "totalListings": 147, "avgCPL": 2.78 },
-    "Super": { "totalRevenue": 15077, "totalListings": 897, "avgCPL": 16.81 }
+    "Basic": { "totalRevenue": 962.5, "totalListings": 275, "avgCPL": 3.5 },
+    "Extra": { "totalRevenue": 422.62, "totalListings": 34, "avgCPL": 12.43 },
+    "Plus": { "totalRevenue": 548.08, "totalListings": 31, "avgCPL": 17.68 },
+    "Premium": { "totalRevenue": 49, "totalListings": 7, "avgCPL": 7.0 },
+    "Standard": { "totalRevenue": 63, "totalListings": 18, "avgCPL": 3.5 },
+    "Super": { "totalRevenue": 3070.08, "totalListings": 123, "avgCPL": 24.96 }
   },
   "Ventilation Works": {
-    "Basic": { "totalRevenue": 797, "totalListings": 282, "avgCPL": 2.83 },
-    "Extra": { "totalRevenue": 598, "totalListings": 85, "avgCPL": 7.04 },
-    "Optimum": { "totalRevenue": 38, "totalListings": 1, "avgCPL": 38.0 },
-    "Plus": { "totalRevenue": 1322, "totalListings": 109, "avgCPL": 12.13 },
-    "Premium": { "totalRevenue": 66, "totalListings": 10, "avgCPL": 6.6 },
-    "Standard": { "totalRevenue": 32, "totalListings": 14, "avgCPL": 2.29 },
-    "Super": { "totalRevenue": 1823, "totalListings": 90, "avgCPL": 20.26 }
+    "Basic": { "totalRevenue": 63, "totalListings": 21, "avgCPL": 3.0 },
+    "Extra": { "totalRevenue": 98.98, "totalListings": 14, "avgCPL": 7.07 },
+    "Plus": { "totalRevenue": 167.7, "totalListings": 13, "avgCPL": 12.9 },
+    "Standard": { "totalRevenue": 3, "totalListings": 1, "avgCPL": 3.0 },
+    "Super": { "totalRevenue": 248.76, "totalListings": 12, "avgCPL": 20.73 }
   },
   "Water Tanks": {
-    "Basic": { "totalRevenue": 1249, "totalListings": 456, "avgCPL": 2.74 },
-    "Extra": { "totalRevenue": 506, "totalListings": 107, "avgCPL": 4.73 },
-    "Plus": { "totalRevenue": 856, "totalListings": 87, "avgCPL": 9.84 },
-    "Premium": { "totalRevenue": 28, "totalListings": 4, "avgCPL": 7.0 },
-    "Standard": { "totalRevenue": 42, "totalListings": 15, "avgCPL": 2.8 },
-    "Super": { "totalRevenue": 703, "totalListings": 47, "avgCPL": 14.96 }
+    "Basic": { "totalRevenue": 105, "totalListings": 35, "avgCPL": 3.0 },
+    "Extra": { "totalRevenue": 57.51, "totalListings": 9, "avgCPL": 6.39 },
+    "Plus": { "totalRevenue": 146.77, "totalListings": 13, "avgCPL": 11.29 },
+    "Super": { "totalRevenue": 75.32, "totalListings": 4, "avgCPL": 18.83 }
   }
 };
 
