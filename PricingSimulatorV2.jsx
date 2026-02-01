@@ -1145,6 +1145,49 @@ Plumber,Super,80`;
           </div>
         )}
 
+        {/* Add-On Revenue Data Management (Optional) */}
+        {activeTab === 'historical' && (
+          <div className="bg-slate-800 rounded-lg p-4 mb-6">
+            <div className="flex flex-wrap items-center justify-between gap-4">
+              <div>
+                <h3 className="text-sm font-semibold text-slate-300">Add-On Revenue Data <span className="text-xs text-slate-500">(Optional)</span></h3>
+                <p className="text-xs text-slate-500">
+                  {Object.keys(addOnData).length} categories with add-on data
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  onClick={downloadAddOnTemplate}
+                  className="px-3 py-1.5 bg-slate-700 hover:bg-slate-600 rounded text-xs transition-colors"
+                >
+                  Download Template
+                </button>
+                <button
+                  onClick={exportAddOnData}
+                  className="px-3 py-1.5 bg-slate-700 hover:bg-slate-600 rounded text-xs transition-colors"
+                >
+                  Export Current Data
+                </button>
+                <label className="px-3 py-1.5 bg-purple-600 hover:bg-purple-700 rounded text-xs cursor-pointer transition-colors">
+                  Upload Add-On CSV
+                  <input
+                    type="file"
+                    accept=".csv"
+                    onChange={handleAddOnCSVUpload}
+                    className="hidden"
+                  />
+                </label>
+                <button
+                  onClick={resetAddOnData}
+                  className="px-3 py-1.5 bg-red-600/50 hover:bg-red-600 rounded text-xs transition-colors"
+                >
+                  Reset to Default
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Custom Input Tab Content */}
         {activeTab === 'custom' && (
           <div className="bg-slate-800 rounded-lg p-6 mb-6">
@@ -1658,16 +1701,23 @@ Plumber,Super,80`;
                   <th className="text-left py-2 px-3 text-slate-400 font-semibold">Bundle</th>
                   <th className="text-right py-2 px-3 text-slate-400 font-semibold">CPL</th>
                   <th className="text-right py-2 px-3 text-slate-400 font-semibold">Listings</th>
-                  <th className="text-right py-2 px-3 text-slate-400 font-semibold">Listings %</th>
-                  <th className="text-right py-2 px-3 text-slate-400 font-semibold">Revenue</th>
-                  <th className="text-right py-2 px-3 text-slate-400 font-semibold">Revenue %</th>
+                  <th className="text-right py-2 px-3 text-slate-400 font-semibold">CPL Rev</th>
+                  <th className="text-right py-2 px-3 text-slate-400 font-semibold">Add-On Rev</th>
+                  <th className="text-right py-2 px-3 text-slate-400 font-semibold">Total Rev</th>
+                  <th className="text-right py-2 px-3 text-slate-400 font-semibold">Total %</th>
                 </tr>
               </thead>
               <tbody>
                 {BUNDLE_TIER_ORDER.filter(bundle => availableBundles.includes(bundle)).map(bundle => {
                   const bundleInfo = categoryData[bundle];
-                  const listingsPct = ((bundleInfo.totalListings / categoryTotals.totalListings) * 100).toFixed(1);
-                  const revenuePct = ((bundleInfo.totalRevenue / categoryTotals.totalRevenue) * 100).toFixed(1);
+                  const addOnRevenue = addOnData[selectedCategory]?.[bundle] || 0;
+                  const totalBundleRevenue = bundleInfo.totalRevenue + addOnRevenue;
+                  
+                  // Calculate category totals including add-ons
+                  const categoryTotalWithAddOns = categoryTotals.totalRevenue + 
+                    Object.entries(addOnData[selectedCategory] || {}).reduce((sum, [b, rev]) => sum + rev, 0);
+                  
+                  const revenuePct = ((totalBundleRevenue / categoryTotalWithAddOns) * 100).toFixed(1);
                   const isSelected = bundle === selectedBundle;
                   
                   return (
@@ -1686,25 +1736,20 @@ Plumber,Super,80`;
                       <td className="text-right py-2 px-3 text-orange-400 font-mono">
                         {bundleInfo.totalListings.toLocaleString()}
                       </td>
-                      <td className="text-right py-2 px-3">
-                        <div className="flex items-center justify-end gap-2">
-                          <div className="flex-1 max-w-[80px] h-2 bg-slate-700 rounded-full overflow-hidden">
-                            <div 
-                              className="h-full bg-orange-500"
-                              style={{ width: `${listingsPct}%` }}
-                            />
-                          </div>
-                          <span className="text-slate-300 font-mono w-12">{listingsPct}%</span>
-                        </div>
-                      </td>
                       <td className="text-right py-2 px-3 text-emerald-400 font-mono">
                         {bundleInfo.totalRevenue.toLocaleString()} KD
                       </td>
+                      <td className="text-right py-2 px-3 text-purple-300 font-mono">
+                        {addOnRevenue > 0 ? `${addOnRevenue.toLocaleString()} KD` : '—'}
+                      </td>
+                      <td className="text-right py-2 px-3 text-cyan-400 font-mono font-semibold">
+                        {totalBundleRevenue.toLocaleString()} KD
+                      </td>
                       <td className="text-right py-2 px-3">
                         <div className="flex items-center justify-end gap-2">
                           <div className="flex-1 max-w-[80px] h-2 bg-slate-700 rounded-full overflow-hidden">
                             <div 
-                              className="h-full bg-emerald-500"
+                              className="h-full bg-cyan-500"
                               style={{ width: `${revenuePct}%` }}
                             />
                           </div>
@@ -1722,9 +1767,14 @@ Plumber,Super,80`;
                   <td className="text-right py-2 px-3 text-orange-400 font-mono">
                     {categoryTotals.totalListings.toLocaleString()}
                   </td>
-                  <td className="text-right py-2 px-3 text-slate-300 font-mono">100.0%</td>
                   <td className="text-right py-2 px-3 text-emerald-400 font-mono">
                     {categoryTotals.totalRevenue.toLocaleString()} KD
+                  </td>
+                  <td className="text-right py-2 px-3 text-purple-300 font-mono">
+                    {Object.entries(addOnData[selectedCategory] || {}).reduce((sum, [b, rev]) => sum + rev, 0).toLocaleString()} KD
+                  </td>
+                  <td className="text-right py-2 px-3 text-cyan-400 font-mono">
+                    {(categoryTotals.totalRevenue + Object.entries(addOnData[selectedCategory] || {}).reduce((sum, [b, rev]) => sum + rev, 0)).toLocaleString()} KD
                   </td>
                   <td className="text-right py-2 px-3 text-slate-300 font-mono">100.0%</td>
                 </tr>
@@ -1849,6 +1899,29 @@ Plumber,Super,80`;
                 />
                 <div className="text-xs text-slate-500 mt-1">Additional fixed costs/losses (e.g., implementation, marketing)</div>
               </div>
+
+              {/* Add-On Loss Rate for Current Bundle */}
+              {results && results.currentAddOnRevenue > 0 && (
+                <div className="border-t border-slate-700 pt-3">
+                  <label className="block text-sm text-slate-400 mb-2">
+                    Add-On Loss Rate for {selectedBundle}: <span className="text-purple-400 font-bold">{addOnLossRates[selectedBundle] || 0}%</span>
+                  </label>
+                  <input
+                    type="range"
+                    min="0"
+                    max="100"
+                    value={addOnLossRates[selectedBundle] || 0}
+                    onChange={(e) => setAddOnLossRates({
+                      ...addOnLossRates,
+                      [selectedBundle]: Number(e.target.value)
+                    })}
+                    className="w-full h-2 bg-slate-600 rounded-lg appearance-none cursor-pointer"
+                  />
+                  <div className="text-xs text-slate-500 mt-1">
+                    Current add-on: {results.currentAddOnRevenue.toFixed(2)} KD ({results.avgAddOnPerCustomer.toFixed(2)} KD/customer)
+                  </div>
+                </div>
+              )}
 
               <div className="pt-2 border-t border-slate-700">
                 <div className="text-xs text-slate-400">
