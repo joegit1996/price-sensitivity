@@ -2048,10 +2048,10 @@ Plumber,Super,80`;
               {/* Add-On Loss Rates for All Bundles in Category */}
               {addOnData[selectedCategory] && Object.keys(addOnData[selectedCategory]).length > 0 && (
                 <div className="border-t border-slate-700 pt-3">
-                  <div className="text-sm text-slate-300 font-semibold mb-3">
+                  <label className="block text-sm text-slate-400 mb-2">
                     Add-On Loss Rates for {selectedCategory}
-                  </div>
-                  <div className="space-y-3 max-h-80 overflow-y-auto">
+                  </label>
+                  <div className="space-y-2">
                     {Object.entries(addOnData[selectedCategory])
                       .sort((a, b) => {
                         const orderA = BUNDLE_TIER_ORDER[a[0]] ?? 999;
@@ -2064,19 +2064,15 @@ Plumber,Super,80`;
                         return (
                           <div 
                             key={bundle} 
-                            className={`bg-slate-700/30 rounded p-2 ${isSelected ? 'ring-1 ring-purple-500' : ''}`}
+                            className="bg-slate-700/30 rounded p-2"
                           >
-                            <div className="flex items-center justify-between mb-1">
-                              <div className="flex items-center gap-2">
-                                <span className={`text-sm font-medium ${isSelected ? 'text-purple-400' : 'text-slate-300'}`}>
-                                  {bundle}
-                                </span>
-                                {isSelected && <span className="text-xs text-purple-400">(selected)</span>}
-                              </div>
-                              <div className="text-right">
-                                <div className="text-xs text-slate-400">{revenue.toFixed(0)} KD</div>
-                                <div className="text-sm font-bold text-purple-400">{currentRate}%</div>
-                              </div>
+                            <div className="flex justify-between items-center mb-1">
+                              <span className={`text-xs ${isSelected ? 'text-purple-400' : 'text-purple-300'}`}>
+                                {bundle} {isSelected && '(selected)'}
+                              </span>
+                              <span className="text-xs text-slate-400">
+                                {currentRate}% loss → {revenue.toFixed(0)} KD
+                              </span>
                             </div>
                             <input
                               type="range"
@@ -2095,9 +2091,6 @@ Plumber,Super,80`;
                         );
                       })
                     }
-                  </div>
-                  <div className="text-xs text-slate-500 mt-2">
-                    Set loss percentage (0-100%) for each bundle's add-on revenue
                   </div>
                 </div>
               )}
