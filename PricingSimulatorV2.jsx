@@ -461,16 +461,6 @@ Plumber,Super,16.81,897`;
   const abTestHigherBundles = getHigherTierBundles(abTestBundle, abTestAvailableBundles);
   const abTestLowerBundles = getLowerTierBundles(abTestBundle, abTestAvailableBundles);
 
-  // A/B Test - Calculate sample size for statistical significance
-  const calculateSampleSize = (confidenceLevel = 0.95, power = 0.8, effectSize = 0.05) => {
-    // Simplified sample size calculation for proportion comparison
-    const zAlpha = confidenceLevel === 0.95 ? 1.96 : confidenceLevel === 0.99 ? 2.576 : 1.645;
-    const zBeta = power === 0.8 ? 0.84 : 1.28;
-    const p = 0.5; // assumed baseline proportion
-    const n = Math.ceil((2 * p * (1 - p) * Math.pow(zAlpha + zBeta, 2)) / Math.pow(effectSize, 2));
-    return n;
-  };
-
   // A/B Test - Download results template CSV
   const downloadAbTestTemplate = () => {
     const bundles = abTestAvailableBundles.length > 0 ? abTestAvailableBundles : ['Basic', 'Plus', 'Super'];
@@ -1218,22 +1208,6 @@ Plumber,Super,16.81,897`;
                 
                 {/* Test Recommendations */}
                 <div className="space-y-3">
-                  <div className="bg-slate-700/50 rounded-lg p-4">
-                    <div className="text-xs text-slate-400 mb-1">Recommended Sample Size</div>
-                    <div className="text-2xl font-bold text-blue-400">{calculateSampleSize()} customers</div>
-                    <div className="text-xs text-slate-500">For 95% confidence, 5% minimum detectable effect</div>
-                  </div>
-                  
-                  <div className="bg-slate-700/50 rounded-lg p-4">
-                    <div className="text-xs text-slate-400 mb-1">Available Customers</div>
-                    <div className="text-2xl font-bold text-emerald-400">{abTestBundleData.totalListings || 0}</div>
-                    <div className="text-xs text-slate-500">
-                      {(abTestBundleData.totalListings || 0) >= calculateSampleSize() 
-                        ? '✓ Sufficient for testing' 
-                        : '⚠ May need longer test duration'}
-                    </div>
-                  </div>
-                  
                   <div className="bg-slate-700/50 rounded-lg p-4">
                     <div className="text-xs text-slate-400 mb-1">Revenue at Risk (worst case 30% churn)</div>
                     <div className="text-2xl font-bold text-amber-400">
