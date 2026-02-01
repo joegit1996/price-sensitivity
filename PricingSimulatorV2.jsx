@@ -431,6 +431,14 @@ export default function PricingSimulator() {
   const [portfolioResults, setPortfolioResults] = useState(null);
   const [portfolioSortBy, setPortfolioSortBy] = useState('netChange'); // netChange, percentChange, category
 
+  // Debug portfolio results
+  useEffect(() => {
+    console.log('=== Portfolio State Changed ===');
+    console.log('portfolioResults:', portfolioResults);
+    console.log('portfolioBundle:', portfolioBundle);
+    console.log('activeTab:', activeTab);
+  }, [portfolioResults, portfolioBundle, activeTab]);
+
   // Combine historical and custom data
   const bundleData = useMemo(() => {
     if (activeTab === 'historical' || activeTab === 'abtest' || activeTab === 'portfolio') {
@@ -1153,7 +1161,13 @@ Plumber,Super,80`;
 
   // Portfolio Analysis - Calculate impact across all categories for selected bundle
   const calculatePortfolioImpact = useCallback(() => {
+    console.log('calculatePortfolioImpact called');
+    console.log('portfolioBundle:', portfolioBundle);
+    console.log('priceChange:', priceChange);
+    console.log('churnRate:', churnRate);
+    
     const categories = Object.keys(historicalData);
+    console.log('categories:', categories.length);
     const results = [];
     
     categories.forEach(category => {
@@ -1247,6 +1261,7 @@ Plumber,Super,80`;
       });
     });
     
+    console.log('Portfolio results:', results.length, 'categories');
     return results;
   }, [historicalData, portfolioBundle, priceChange, churnRate, downgradeRates, upgradeRates, fixedKDLoss, addOnData, addOnLossRates]);
 
@@ -1914,7 +1929,12 @@ Plumber,Super,80`;
                 {/* Calculate Button */}
                 <div className="flex items-end">
                   <button
-                    onClick={() => setPortfolioResults(calculatePortfolioImpact())}
+                    onClick={() => {
+                      console.log('Button clicked!');
+                      const results = calculatePortfolioImpact();
+                      console.log('Results from function:', results);
+                      setPortfolioResults(results);
+                    }}
                     className="w-full px-6 py-3 bg-blue-600 hover:bg-blue-700 rounded text-white font-semibold transition-colors"
                   >
                     Calculate Portfolio Impact
