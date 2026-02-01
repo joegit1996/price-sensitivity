@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, BarChart, Bar, Cell, ReferenceLine } from 'recharts';
 
 // Default add-on revenue data (from actual data)
@@ -426,9 +426,14 @@ export default function PricingSimulator() {
     return saved ? JSON.parse(saved) : {};
   });
 
+  // Portfolio Analysis state
+  const [portfolioBundle, setPortfolioBundle] = useState('Plus');
+  const [portfolioResults, setPortfolioResults] = useState(null);
+  const [portfolioSortBy, setPortfolioSortBy] = useState('netChange'); // netChange, percentChange, category
+
   // Combine historical and custom data
   const bundleData = useMemo(() => {
-    if (activeTab === 'historical' || activeTab === 'abtest') {
+    if (activeTab === 'historical' || activeTab === 'abtest' || activeTab === 'portfolio') {
       return historicalData;
     } else {
       return customScenarios;
@@ -1146,6 +1151,130 @@ Plumber,Super,80`;
     };
   }, [hasData, categoryData, selectedCategory, selectedBundle, priceChange, churnRate, downgradeRates, upgradeRates, totalDowngradeRate, totalUpgradeRate, fixedKDLoss, categoryTotals, isTopTier, isBottomTier, lowerBundles, higherBundles, addOnData, addOnLossRates]);
 
+  // Portfolio Analysis - Calculate impact across all categories for selected bundle
+  const calculatePortfolioImpact = useCallback(() => {
+    const categories = Object.keys(historicalData);
+    const results = [];
+    
+    categories.forEach(category => {
+      const catData = historicalData[category];
+      if (!catData[portfolioBundle]) return; // Skip if bundle doesn't exist in this category
+      
+      const bundleInfo = catData[portfolioBundle];
+      const currentCPL = bundleInfo.avgCPL;
+      const currentListings = bundleInfo.totalListings;
+      const currentRevenue = bundleInfo.totalRevenue;
+      
+      // Get add-on revenue
+      const currentAddOnRevenue = (addOnData[category]?.[portfolioBundle] || 0);
+      const avgAddOnPerCustomer = currentListings > 0 ? currentAddOnRevenue / currentListings : 0;
+      const addOnLossRate = ((addOnLossRates[category]?.[portfolioBundle] || 0) / 100);
+      
+      const newCPL = currentCPL * (1 + priceChange / 100);
+      
+      // Get tier info for this category
+      const availableBundles = Object.keys(catData);
+      const lowerBundles = getLowerBundles(portfolioBundle, availableBundles);
+      const higherBundles = getHigherBundles(portfolioBundle, availableBundles);
+      const isBottomTier = lowerBundles.length === 0;
+      const isTopTier = higherBundles.length === 0;
+      
+      // Calculate totals
+      let categoryTotal = 0;
+      Object.values(catData).forEach(b => { categoryTotal += b.totalRevenue; });
+      
+      const totalDowngradeRate = Object.values(downgradeRates).reduce((sum, rate) => sum + rate, 0);
+      const totalUpgradeRate = Object.values(upgradeRates).reduce((sum, rate) => sum + rate, 0);
+      
+      // Validate rates
+      const effectiveChurn = Math.min(churnRate, 100);
+      const effectiveDowngrade = isBottomTier ? 0 : Math.min(totalDowngradeRate, 100 - effectiveChurn);
+      const effectiveUpgrade = isTopTier ? 0 : Math.min(totalUpgradeRate, 100 - effectiveChurn - effectiveDowngrade);
+      const stayRate = Math.max(0, 100 - effectiveChurn - effectiveDowngrade - effectiveUpgrade);
+      
+      // Calculate listing movements
+      const stayingListings = currentListings * (stayRate / 100);
+      const churnedListings = currentListings * (effectiveChurn / 100);
+      const totalDowngradeListings = currentListings * (effectiveDowngrade / 100);
+      const totalUpgradeListings = currentListings * (effectiveUpgrade / 100);
+      
+      // Add-on impact
+      const lostAddOnRevenue = (churnedListings + totalDowngradeListings + totalUpgradeListings) * avgAddOnPerCustomer * addOnLossRate;
+      const newAddOnRevenue = currentAddOnRevenue - lostAddOnRevenue;
+      
+      // Downgrade revenue
+      let downgradeRevenue = 0;
+      lowerBundles.forEach(bundle => {
+        const rate = downgradeRates[bundle] || 0;
+        const listings = currentListings * (rate / 100);
+        const bundleData = catData[bundle];
+        if (bundleData) {
+          downgradeRevenue += listings * bundleData.avgCPL;
+        }
+      });
+      
+      // Upgrade revenue
+      let upgradeRevenue = 0;
+      higherBundles.forEach(bundle => {
+        const rate = upgradeRates[bundle] || 0;
+        const listings = currentListings * (rate / 100);
+        const bundleData = catData[bundle];
+        if (bundleData) {
+          upgradeRevenue += listings * bundleData.avgCPL;
+        }
+      });
+      
+      // Calculate revenues
+      const newBundleRevenue = stayingListings * newCPL;
+      
+      // Net change
+      const cplRevenueChange = (newBundleRevenue - currentRevenue) + downgradeRevenue + upgradeRevenue;
+      const addOnRevenueChange = newAddOnRevenue - currentAddOnRevenue;
+      const netRevenueChange = cplRevenueChange + addOnRevenueChange - fixedKDLoss;
+      const newRevenue = currentRevenue + netRevenueChange;
+      const percentChange = (netRevenueChange / currentRevenue) * 100;
+      
+      results.push({
+        category,
+        currentRevenue,
+        newRevenue,
+        netRevenueChange,
+        percentChange,
+        currentListings,
+        currentCPL,
+        newCPL,
+        hasAddOn: currentAddOnRevenue > 0
+      });
+    });
+    
+    return results;
+  }, [historicalData, portfolioBundle, priceChange, churnRate, downgradeRates, upgradeRates, fixedKDLoss, addOnData, addOnLossRates]);
+
+  // Portfolio aggregate summary
+  const portfolioSummary = useMemo(() => {
+    if (!portfolioResults) return null;
+    
+    const totalCurrent = portfolioResults.reduce((sum, r) => sum + r.currentRevenue, 0);
+    const totalNew = portfolioResults.reduce((sum, r) => sum + r.newRevenue, 0);
+    const totalNetChange = portfolioResults.reduce((sum, r) => sum + r.netRevenueChange, 0);
+    const totalPercentChange = (totalNetChange / totalCurrent) * 100;
+    const positiveCount = portfolioResults.filter(r => r.netRevenueChange > 0).length;
+    const negativeCount = portfolioResults.filter(r => r.netRevenueChange < 0).length;
+    const neutralCount = portfolioResults.filter(r => r.netRevenueChange === 0).length;
+    
+    return {
+      totalCurrent,
+      totalNew,
+      totalNetChange,
+      totalPercentChange,
+      categoriesAnalyzed: portfolioResults.length,
+      totalCategories: Object.keys(historicalData).length,
+      positiveCount,
+      negativeCount,
+      neutralCount
+    };
+  }, [portfolioResults, historicalData]);
+
   // Build waterfall data for visualization
   const waterfallData = useMemo(() => {
     if (!results || !hasData) return [];
@@ -1243,6 +1372,16 @@ Plumber,Super,80`;
             }`}
           >
             A/B Testing
+          </button>
+          <button
+            onClick={() => setActiveTab('portfolio')}
+            className={`px-4 py-2 font-semibold transition-colors ${
+              activeTab === 'portfolio'
+                ? 'text-blue-400 border-b-2 border-blue-400'
+                : 'text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            Portfolio Analysis
           </button>
         </div>
 
@@ -1738,6 +1877,260 @@ Plumber,Super,80`;
                       </div>
                     </div>
                   ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Portfolio Analysis Tab Content */}
+        {activeTab === 'portfolio' && (
+          <div className="space-y-6 mb-6">
+            {/* Portfolio Configuration */}
+            <div className="bg-slate-800 rounded-lg p-6">
+              <h2 className="text-xl font-bold mb-4">Portfolio Analysis Configuration</h2>
+              <p className="text-slate-400 text-sm mb-4">
+                Analyze the impact of price changes on a single bundle across all categories
+              </p>
+              
+              <div className="grid md:grid-cols-2 gap-6">
+                {/* Bundle Selection */}
+                <div>
+                  <label className="block text-sm text-slate-400 mb-2">Select Bundle to Analyze</label>
+                  <select
+                    value={portfolioBundle}
+                    onChange={(e) => setPortfolioBundle(e.target.value)}
+                    className="w-full bg-slate-700 border border-slate-600 rounded px-3 py-2 text-white"
+                  >
+                    {BUNDLE_TIER_ORDER.map(bundle => (
+                      <option key={bundle} value={bundle}>{bundle}</option>
+                    ))}
+                  </select>
+                  <div className="text-xs text-slate-500 mt-1">
+                    Analysis will include all categories where this bundle exists
+                  </div>
+                </div>
+
+                {/* Calculate Button */}
+                <div className="flex items-end">
+                  <button
+                    onClick={() => setPortfolioResults(calculatePortfolioImpact())}
+                    className="w-full px-6 py-3 bg-blue-600 hover:bg-blue-700 rounded text-white font-semibold transition-colors"
+                  >
+                    Calculate Portfolio Impact
+                  </button>
+                </div>
+              </div>
+
+              {/* Scenario Controls Summary */}
+              <div className="mt-6 pt-4 border-t border-slate-700">
+                <div className="text-sm text-slate-400 mb-2">Current Scenario Settings:</div>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+                  <div className="bg-slate-700/30 rounded p-2">
+                    <div className="text-xs text-slate-500">Price Change</div>
+                    <div className="font-bold text-emerald-400">+{priceChange}%</div>
+                  </div>
+                  <div className="bg-slate-700/30 rounded p-2">
+                    <div className="text-xs text-slate-500">Churn Rate</div>
+                    <div className="font-bold text-red-400">{churnRate}%</div>
+                  </div>
+                  <div className="bg-slate-700/30 rounded p-2">
+                    <div className="text-xs text-slate-500">Downgrade</div>
+                    <div className="font-bold text-amber-400">{totalDowngradeRate}%</div>
+                  </div>
+                  <div className="bg-slate-700/30 rounded p-2">
+                    <div className="text-xs text-slate-500">Upgrade</div>
+                    <div className="font-bold text-blue-400">{totalUpgradeRate}%</div>
+                  </div>
+                </div>
+                <div className="text-xs text-slate-500 mt-2">
+                  ℹ️ Modify scenario settings in Historical Data or Custom Input tabs
+                </div>
+              </div>
+            </div>
+
+            {/* Portfolio Results */}
+            {portfolioResults && portfolioSummary && (
+              <>
+                {/* Aggregate Summary */}
+                <div className="bg-slate-800 rounded-lg p-6">
+                  <h2 className="text-xl font-bold mb-4">Aggregate Summary</h2>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <div className="bg-slate-700/50 rounded-lg p-4">
+                      <div className="text-xs text-slate-400">Total Current Revenue</div>
+                      <div className="text-2xl font-bold text-white">
+                        {Math.round(portfolioSummary.totalCurrent).toLocaleString()} KD
+                      </div>
+                    </div>
+                    <div className="bg-slate-700/50 rounded-lg p-4">
+                      <div className="text-xs text-slate-400">Total New Revenue</div>
+                      <div className="text-2xl font-bold text-white">
+                        {Math.round(portfolioSummary.totalNew).toLocaleString()} KD
+                      </div>
+                    </div>
+                    <div className="bg-slate-700/50 rounded-lg p-4">
+                      <div className="text-xs text-slate-400">Net Change</div>
+                      <div className={`text-2xl font-bold ${portfolioSummary.totalNetChange >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                        {portfolioSummary.totalNetChange >= 0 ? '+' : ''}{Math.round(portfolioSummary.totalNetChange).toLocaleString()} KD
+                      </div>
+                      <div className={`text-xs ${portfolioSummary.totalNetChange >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>
+                        {portfolioSummary.totalPercentChange >= 0 ? '+' : ''}{portfolioSummary.totalPercentChange.toFixed(2)}%
+                      </div>
+                    </div>
+                    <div className="bg-slate-700/50 rounded-lg p-4">
+                      <div className="text-xs text-slate-400">Categories</div>
+                      <div className="text-2xl font-bold text-white">
+                        {portfolioSummary.categoriesAnalyzed}/{portfolioSummary.totalCategories}
+                      </div>
+                      <div className="text-xs text-slate-500 space-x-2">
+                        <span className="text-emerald-500">🟢 {portfolioSummary.positiveCount}</span>
+                        <span className="text-red-500">🔴 {portfolioSummary.negativeCount}</span>
+                        <span className="text-slate-500">⚪ {portfolioSummary.neutralCount}</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Category Breakdown Table */}
+                <div className="bg-slate-800 rounded-lg p-6">
+                  <div className="flex items-center justify-between mb-4">
+                    <h2 className="text-xl font-bold">Category Breakdown</h2>
+                    <div className="flex items-center gap-3">
+                      <label className="text-sm text-slate-400">Sort by:</label>
+                      <select
+                        value={portfolioSortBy}
+                        onChange={(e) => setPortfolioSortBy(e.target.value)}
+                        className="bg-slate-700 border border-slate-600 rounded px-3 py-1 text-sm text-white"
+                      >
+                        <option value="netChange">Net Change</option>
+                        <option value="percentChange">% Change</option>
+                        <option value="category">Category Name</option>
+                        <option value="currentRevenue">Current Revenue</option>
+                      </select>
+                      <button
+                        onClick={() => {
+                          const csv = [
+                            'Category,Current Revenue (KD),New Revenue (KD),Net Change (KD),% Change,Current Listings,Current CPL,New CPL,Has Add-On',
+                            ...portfolioResults.map(r => 
+                              `${r.category},${r.currentRevenue.toFixed(2)},${r.newRevenue.toFixed(2)},${r.netRevenueChange.toFixed(2)},${r.percentChange.toFixed(2)},${r.currentListings},${r.currentCPL.toFixed(2)},${r.newCPL.toFixed(2)},${r.hasAddOn ? 'Yes' : 'No'}`
+                            )
+                          ].join('\n');
+                          const blob = new Blob([csv], { type: 'text/csv' });
+                          const url = window.URL.createObjectURL(blob);
+                          const a = document.createElement('a');
+                          a.href = url;
+                          a.download = `portfolio_analysis_${portfolioBundle}_${new Date().toISOString().split('T')[0]}.csv`;
+                          a.click();
+                          window.URL.revokeObjectURL(url);
+                        }}
+                        className="px-3 py-1 bg-emerald-600 hover:bg-emerald-700 rounded text-sm transition-colors"
+                      >
+                        Export CSV
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b border-slate-700">
+                          <th className="text-left py-2 px-3 text-slate-400 font-semibold">Category</th>
+                          <th className="text-right py-2 px-3 text-slate-400 font-semibold">Current Rev</th>
+                          <th className="text-right py-2 px-3 text-slate-400 font-semibold">New Rev</th>
+                          <th className="text-right py-2 px-3 text-slate-400 font-semibold">Net Change</th>
+                          <th className="text-right py-2 px-3 text-slate-400 font-semibold">% Change</th>
+                          <th className="text-right py-2 px-3 text-slate-400 font-semibold">Listings</th>
+                          <th className="text-center py-2 px-3 text-slate-400 font-semibold">Impact</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {[...portfolioResults].sort((a, b) => {
+                          if (portfolioSortBy === 'netChange') return b.netRevenueChange - a.netRevenueChange;
+                          if (portfolioSortBy === 'percentChange') return b.percentChange - a.percentChange;
+                          if (portfolioSortBy === 'category') return a.category.localeCompare(b.category);
+                          if (portfolioSortBy === 'currentRevenue') return b.currentRevenue - a.currentRevenue;
+                          return 0;
+                        }).map(result => (
+                          <tr key={result.category} className="border-b border-slate-700/50 hover:bg-slate-700/30">
+                            <td className="py-3 px-3 font-medium text-white">
+                              {result.category}
+                              {result.hasAddOn && <span className="ml-1 text-xs text-purple-400">+A</span>}
+                            </td>
+                            <td className="py-3 px-3 text-right text-slate-300">
+                              {Math.round(result.currentRevenue).toLocaleString()} KD
+                            </td>
+                            <td className="py-3 px-3 text-right text-slate-300">
+                              {Math.round(result.newRevenue).toLocaleString()} KD
+                            </td>
+                            <td className={`py-3 px-3 text-right font-semibold ${
+                              result.netRevenueChange > 0 ? 'text-emerald-400' : 
+                              result.netRevenueChange < 0 ? 'text-red-400' : 'text-slate-400'
+                            }`}>
+                              {result.netRevenueChange >= 0 ? '+' : ''}{Math.round(result.netRevenueChange).toLocaleString()} KD
+                            </td>
+                            <td className={`py-3 px-3 text-right font-semibold ${
+                              result.percentChange > 0 ? 'text-emerald-400' : 
+                              result.percentChange < 0 ? 'text-red-400' : 'text-slate-400'
+                            }`}>
+                              {result.percentChange >= 0 ? '+' : ''}{result.percentChange.toFixed(1)}%
+                            </td>
+                            <td className="py-3 px-3 text-right text-slate-400">
+                              {result.currentListings}
+                            </td>
+                            <td className="py-3 px-3 text-center">
+                              {result.netRevenueChange > 0 ? '🟢' : result.netRevenueChange < 0 ? '🔴' : '⚪'}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                {/* Visualization */}
+                <div className="bg-slate-800 rounded-lg p-6">
+                  <h2 className="text-xl font-bold mb-4">Impact Visualization</h2>
+                  <div className="space-y-2">
+                    {[...portfolioResults].sort((a, b) => b.netRevenueChange - a.netRevenueChange).map(result => {
+                      const maxAbs = Math.max(...portfolioResults.map(r => Math.abs(r.netRevenueChange)));
+                      const barWidth = maxAbs > 0 ? (Math.abs(result.netRevenueChange) / maxAbs) * 100 : 0;
+                      const isPositive = result.netRevenueChange >= 0;
+                      
+                      return (
+                        <div key={result.category} className="flex items-center gap-3">
+                          <div className="w-32 text-sm text-slate-300 truncate">{result.category}</div>
+                          <div className="flex-1 flex items-center">
+                            {isPositive ? (
+                              <div 
+                                className="bg-emerald-500/50 h-6 rounded transition-all"
+                                style={{ width: `${barWidth}%` }}
+                              />
+                            ) : (
+                              <div 
+                                className="bg-red-500/50 h-6 rounded transition-all"
+                                style={{ width: `${barWidth}%` }}
+                              />
+                            )}
+                            <span className={`ml-2 text-sm font-semibold whitespace-nowrap ${
+                              isPositive ? 'text-emerald-400' : 'text-red-400'
+                            }`}>
+                              {result.netRevenueChange >= 0 ? '+' : ''}{Math.round(result.netRevenueChange).toLocaleString()} KD
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </>
+            )}
+
+            {/* Empty State */}
+            {!portfolioResults && (
+              <div className="bg-slate-800 rounded-lg p-12 text-center">
+                <div className="text-slate-500 text-lg mb-2">👆 Select a bundle and click "Calculate Portfolio Impact"</div>
+                <div className="text-slate-600 text-sm">
+                  Analysis will show impact across all categories where the bundle exists
                 </div>
               </div>
             )}
