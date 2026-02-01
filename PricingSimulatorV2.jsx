@@ -809,7 +809,15 @@ Plumber,Super,16.81,897`;
     const percentChange = (netRevenueChange / oldCategoryRevenue) * 100;
 
     // Break-even analysis (simplified - assuming no upgrades/downgrades)
-    const breakEvenChurn = priceChange / (1 + priceChange / 100) * 100;
+    // Formula: At what churn rate does (staying% × newPrice) = oldRevenue?
+    // Staying% = (100 - churn) / 100
+    // (100 - churn) / 100 × newPrice = oldRevenue
+    // (100 - churn) × newPrice = oldRevenue × 100
+    // 100 × newPrice - churn × newPrice = oldRevenue × 100
+    // churn = (100 × newPrice - oldRevenue × 100) / newPrice
+    // churn = ((newPrice - oldRevenue) × 100) / newPrice
+    // churn = (priceIncrease% × 100) / (100 + priceIncrease%)
+    const breakEvenChurn = (priceChange * 100) / (100 + priceChange);
 
     return {
       currentCPL,
@@ -1919,9 +1927,9 @@ Percentage Change: ${results.percentChange.toFixed(2)}% of category revenue`}
                 <h4 className="font-semibold text-red-400 mb-2">Break-Even Formula</h4>
                 <pre className="text-slate-300 overflow-x-auto">
 {`Break-even churn (assuming no migration):
-breakEvenChurn = priceChange / (1 + priceChange/100) × 100
-breakEvenChurn = ${priceChange} / (1 + ${priceChange}/100) × 100
-breakEvenChurn = ${priceChange} / ${(1 + priceChange/100).toFixed(2)} × 100
+breakEvenChurn = (priceChange × 100) / (100 + priceChange)
+breakEvenChurn = (${priceChange} × 100) / (100 + ${priceChange})
+breakEvenChurn = ${priceChange * 100} / ${100 + priceChange}
 breakEvenChurn = ${results.breakEvenChurn.toFixed(1)}%
 
 This means: at +${priceChange}% price, if more than ${results.breakEvenChurn.toFixed(1)}% 
