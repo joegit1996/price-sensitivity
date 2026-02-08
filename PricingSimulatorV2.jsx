@@ -401,6 +401,32 @@ export default function PricingSimulator() {
   const [fixedKDLoss, setFixedKDLoss] = useState(0);
   const [showCalculations, setShowCalculations] = useState(false);
 
+  // Multi-Bundle Mode state
+  const [isMultiBundleMode, setIsMultiBundleMode] = useState(() => {
+    const saved = localStorage.getItem('isMultiBundleMode');
+    return saved ? JSON.parse(saved) : false;
+  });
+  const [selectedBundles, setSelectedBundles] = useState(() => {
+    const saved = localStorage.getItem('selectedBundles');
+    return saved ? JSON.parse(saved) : {};
+  });
+  const [bundlePriceChanges, setBundlePriceChanges] = useState(() => {
+    const saved = localStorage.getItem('bundlePriceChanges');
+    return saved ? JSON.parse(saved) : {};
+  });
+  const [bundleChurnRates, setBundleChurnRates] = useState(() => {
+    const saved = localStorage.getItem('bundleChurnRates');
+    return saved ? JSON.parse(saved) : {};
+  });
+  const [bundleDowngradeRates, setBundleDowngradeRates] = useState(() => {
+    const saved = localStorage.getItem('bundleDowngradeRates');
+    return saved ? JSON.parse(saved) : {};
+  });
+  const [bundleUpgradeRates, setBundleUpgradeRates] = useState(() => {
+    const saved = localStorage.getItem('bundleUpgradeRates');
+    return saved ? JSON.parse(saved) : {};
+  });
+
   // A/B Testing state
   const [abTestCategory, setAbTestCategory] = useState('AC Services');
   const [abTestBundle, setAbTestBundle] = useState('Plus');
@@ -420,7 +446,8 @@ export default function PricingSimulator() {
     return saved ? JSON.parse(saved) : defaultAddOnData;
   });
   
-  // Add-On Loss Rates per bundle in category (Category -> Bundle -> rate)
+  // Add-On Revenue Change % per bundle in category (Category -> Bundle -> rate)
+  // Negative = reduction (e.g. -50 means 50% less), Positive = increase (e.g. +20 means 20% more)
   const [addOnLossRates, setAddOnLossRates] = useState(() => {
     const saved = localStorage.getItem('addOnLossRates');
     return saved ? JSON.parse(saved) : {};
@@ -428,16 +455,25 @@ export default function PricingSimulator() {
 
   // Portfolio Analysis state
   const [portfolioBundle, setPortfolioBundle] = useState('Plus');
-  const [portfolioResults, setPortfolioResults] = useState(null);
-  const [portfolioSortBy, setPortfolioSortBy] = useState('netChange'); // netChange, percentChange, category
+  const [portfolioSortBy, setPortfolioSortBy] = useState('netChange');
+  const [portfolioSortAsc, setPortfolioSortAsc] = useState(false);
+  const [portfolioPriceChange, setPortfolioPriceChange] = useState(20);
+  const [portfolioChurnRate, setPortfolioChurnRate] = useState(10);
+  const [portfolioDowngradeRates, setPortfolioDowngradeRates] = useState({}); // { bundleName: rate }
+  const [portfolioUpgradeRates, setPortfolioUpgradeRates] = useState({}); // { bundleName: rate }
+  const [portfolioAddOnLossRates, setPortfolioAddOnLossRates] = useState({}); // { bundleName: rate }
+  const [portfolioFixedKDLoss, setPortfolioFixedKDLoss] = useState(0);
 
-  // Debug portfolio results
-  useEffect(() => {
-    console.log('=== Portfolio State Changed ===');
-    console.log('portfolioResults:', portfolioResults);
-    console.log('portfolioBundle:', portfolioBundle);
-    console.log('activeTab:', activeTab);
-  }, [portfolioResults, portfolioBundle, activeTab]);
+  // Portfolio multi-bundle mode state (isolated from historical tab)
+  const [portfolioIsMultiBundle, setPortfolioIsMultiBundle] = useState(false);
+  const [portfolioSelectedBundles, setPortfolioSelectedBundles] = useState({});
+  const [portfolioBundlePriceChanges, setPortfolioBundlePriceChanges] = useState({});
+  const [portfolioBundleChurnRates, setPortfolioBundleChurnRates] = useState({});
+  const [portfolioBundleDowngradeRates, setPortfolioBundleDowngradeRates] = useState({});
+  const [portfolioBundleUpgradeRates, setPortfolioBundleUpgradeRates] = useState({});
+  const [portfolioBundleAddOnRates, setPortfolioBundleAddOnRates] = useState({});
+  const [portfolioAddOnEdits, setPortfolioAddOnEdits] = useState({});
+  const [portfolioAddOnEditorOpen, setPortfolioAddOnEditorOpen] = useState(false);
 
   // Combine historical and custom data
   const bundleData = useMemo(() => {
@@ -472,6 +508,31 @@ export default function PricingSimulator() {
   useEffect(() => {
     localStorage.setItem('addOnLossRates', JSON.stringify(addOnLossRates));
   }, [addOnLossRates]);
+
+  // Save multi-bundle mode state to localStorage
+  useEffect(() => {
+    localStorage.setItem('isMultiBundleMode', JSON.stringify(isMultiBundleMode));
+  }, [isMultiBundleMode]);
+
+  useEffect(() => {
+    localStorage.setItem('selectedBundles', JSON.stringify(selectedBundles));
+  }, [selectedBundles]);
+
+  useEffect(() => {
+    localStorage.setItem('bundlePriceChanges', JSON.stringify(bundlePriceChanges));
+  }, [bundlePriceChanges]);
+
+  useEffect(() => {
+    localStorage.setItem('bundleChurnRates', JSON.stringify(bundleChurnRates));
+  }, [bundleChurnRates]);
+
+  useEffect(() => {
+    localStorage.setItem('bundleDowngradeRates', JSON.stringify(bundleDowngradeRates));
+  }, [bundleDowngradeRates]);
+
+  useEffect(() => {
+    localStorage.setItem('bundleUpgradeRates', JSON.stringify(bundleUpgradeRates));
+  }, [bundleUpgradeRates]);
 
   const categories = Object.keys(bundleData).sort();
   const hasData = categories.length > 0;
@@ -1060,7 +1121,6 @@ Plumber,Super,80`;
     
     // Get add-on revenue for current bundle
     const currentAddOnRevenue = (addOnData[selectedCategory]?.[selectedBundle] || 0);
-    const avgAddOnPerCustomer = currentListings > 0 ? currentAddOnRevenue / currentListings : 0;
     const addOnLossRate = ((addOnLossRates[selectedCategory]?.[selectedBundle] || 0) / 100);
     
     const newCPL = currentCPL * (1 + priceChange / 100);
@@ -1077,10 +1137,10 @@ Plumber,Super,80`;
     const totalDowngradeListings = currentListings * (effectiveDowngrade / 100);
     const totalUpgradeListings = currentListings * (effectiveUpgrade / 100);
 
-    // Calculate add-on revenue impact
-    const stayingAddOnRevenue = stayingListings * avgAddOnPerCustomer * (1 - addOnLossRate);
-    const lostAddOnRevenue = (churnedListings + totalDowngradeListings + totalUpgradeListings) * avgAddOnPerCustomer * addOnLossRate;
-    const newAddOnRevenue = currentAddOnRevenue - lostAddOnRevenue;
+    // Calculate add-on revenue impact (% change applies to per-listing add-on rate, then multiplied by final listings)
+    const avgAddOnPerListing = currentListings > 0 ? currentAddOnRevenue / currentListings : 0;
+    const adjustedAddOnPerListing = avgAddOnPerListing * (1 + addOnLossRate);
+    const newAddOnRevenue = adjustedAddOnPerListing * stayingListings;
 
     // Calculate downgrade revenue per bundle and total
     const downgradeDetails = {};
@@ -1129,7 +1189,8 @@ Plumber,Super,80`;
       currentListings,
       currentRevenue,
       currentAddOnRevenue,
-      avgAddOnPerCustomer,
+      avgAddOnPerListing,
+      adjustedAddOnPerListing,
       addOnLossRate,
       stayRate,
       stayingListings,
@@ -1142,8 +1203,6 @@ Plumber,Super,80`;
       downgradeDetails,
       upgradeDetails,
       lostRevenue,
-      stayingAddOnRevenue,
-      lostAddOnRevenue,
       newAddOnRevenue,
       addOnRevenueChange,
       cplRevenueChange,
@@ -1159,124 +1218,446 @@ Plumber,Super,80`;
     };
   }, [hasData, categoryData, selectedCategory, selectedBundle, priceChange, churnRate, downgradeRates, upgradeRates, totalDowngradeRate, totalUpgradeRate, fixedKDLoss, categoryTotals, isTopTier, isBottomTier, lowerBundles, higherBundles, addOnData, addOnLossRates]);
 
-  // Portfolio Analysis - Calculate impact across all categories for selected bundle
-  const calculatePortfolioImpact = useCallback(() => {
-    console.log('calculatePortfolioImpact called');
-    console.log('portfolioBundle:', portfolioBundle);
-    console.log('priceChange:', priceChange);
-    console.log('churnRate:', churnRate);
-    
-    const categories = Object.keys(historicalData);
-    console.log('categories:', categories.length);
-    const results = [];
-    
-    categories.forEach(category => {
-      const catData = historicalData[category];
-      if (!catData[portfolioBundle]) return; // Skip if bundle doesn't exist in this category
-      
-      const bundleInfo = catData[portfolioBundle];
-      const currentCPL = bundleInfo.avgCPL;
-      const currentListings = bundleInfo.totalListings;
-      const currentRevenue = bundleInfo.totalRevenue;
-      
-      // Get add-on revenue
-      const currentAddOnRevenue = (addOnData[category]?.[portfolioBundle] || 0);
-      const avgAddOnPerCustomer = currentListings > 0 ? currentAddOnRevenue / currentListings : 0;
-      const addOnLossRate = ((addOnLossRates[category]?.[portfolioBundle] || 0) / 100);
-      
-      const newCPL = currentCPL * (1 + priceChange / 100);
-      
-      // Get tier info for this category
-      const availableBundles = Object.keys(catData);
-      const lowerBundles = getLowerBundles(portfolioBundle, availableBundles);
-      const higherBundles = getHigherBundles(portfolioBundle, availableBundles);
-      const isBottomTier = lowerBundles.length === 0;
-      const isTopTier = higherBundles.length === 0;
-      
-      // Calculate totals
-      let categoryTotal = 0;
-      Object.values(catData).forEach(b => { categoryTotal += b.totalRevenue; });
-      
-      const totalDowngradeRate = Object.values(downgradeRates).reduce((sum, rate) => sum + rate, 0);
-      const totalUpgradeRate = Object.values(upgradeRates).reduce((sum, rate) => sum + rate, 0);
-      
-      // Validate rates
-      const effectiveChurn = Math.min(churnRate, 100);
-      const effectiveDowngrade = isBottomTier ? 0 : Math.min(totalDowngradeRate, 100 - effectiveChurn);
-      const effectiveUpgrade = isTopTier ? 0 : Math.min(totalUpgradeRate, 100 - effectiveChurn - effectiveDowngrade);
-      const stayRate = Math.max(0, 100 - effectiveChurn - effectiveDowngrade - effectiveUpgrade);
-      
-      // Calculate listing movements
-      const stayingListings = currentListings * (stayRate / 100);
-      const churnedListings = currentListings * (effectiveChurn / 100);
-      const totalDowngradeListings = currentListings * (effectiveDowngrade / 100);
-      const totalUpgradeListings = currentListings * (effectiveUpgrade / 100);
-      
-      // Add-on impact
-      const lostAddOnRevenue = (churnedListings + totalDowngradeListings + totalUpgradeListings) * avgAddOnPerCustomer * addOnLossRate;
-      const newAddOnRevenue = currentAddOnRevenue - lostAddOnRevenue;
-      
-      // Downgrade revenue
-      let downgradeRevenue = 0;
-      lowerBundles.forEach(bundle => {
-        const rate = downgradeRates[bundle] || 0;
-        const listings = currentListings * (rate / 100);
-        const bundleData = catData[bundle];
-        if (bundleData) {
-          downgradeRevenue += listings * bundleData.avgCPL;
+  // Multi-Bundle calculation
+  const multiBundleResults = useMemo(() => {
+    if (!isMultiBundleMode || !hasData || !categoryData || Object.keys(categoryData).length === 0) return null;
+
+    const availableBundles = Object.keys(categoryData);
+    const selectedBundleNames = Object.keys(selectedBundles).filter(b => selectedBundles[b]);
+
+    if (selectedBundleNames.length === 0) return null;
+
+    // STEP 1: Calculate new CPLs for ALL bundles
+    const newCPLs = {};
+    availableBundles.forEach(bundle => {
+      const priceChange = bundlePriceChanges[bundle] || 0;
+      newCPLs[bundle] = categoryData[bundle].avgCPL * (1 + priceChange / 100);
+    });
+
+    // STEP 2: For EACH bundle, calculate net listing changes
+    const bundleResults = {};
+    let totalCannibalization = 0;
+
+    availableBundles.forEach(bundle => {
+      const bundleData = categoryData[bundle];
+      const originalListings = bundleData.totalListings;
+      const currentCPL = bundleData.avgCPL;
+      const newCPL = newCPLs[bundle];
+      const priceChange = bundlePriceChanges[bundle] || 0;
+
+      // Start with original listings
+      let finalListings = originalListings;
+
+      // Get migration rates for this bundle
+      const churnRate = bundleChurnRates[bundle] || 0;
+      const downgradeRates = bundleDowngradeRates[bundle] || {};
+      const upgradeRates = bundleUpgradeRates[bundle] || {};
+
+      // SUBTRACT: Customers leaving this bundle
+      const churned = originalListings * (churnRate / 100);
+      finalListings -= churned;
+
+      let totalDowngraded = 0;
+      let totalUpgraded = 0;
+      const downgradeDetails = {};
+      const upgradeDetails = {};
+
+      // SUBTRACT: Customers downgrading from this bundle
+      Object.entries(downgradeRates).forEach(([targetBundle, rate]) => {
+        const downgraded = originalListings * (rate / 100);
+        finalListings -= downgraded;
+        totalDowngraded += downgraded;
+        downgradeDetails[targetBundle] = {
+          rate,
+          listings: downgraded,
+          targetCPL: newCPLs[targetBundle]
+        };
+
+        // Track cannibalization if target bundle is also changing price
+        if (selectedBundles[targetBundle]) {
+          const lostPerCustomer = currentCPL - newCPLs[targetBundle];
+          totalCannibalization += lostPerCustomer * downgraded;
         }
       });
-      
-      // Upgrade revenue
-      let upgradeRevenue = 0;
-      higherBundles.forEach(bundle => {
-        const rate = upgradeRates[bundle] || 0;
-        const listings = currentListings * (rate / 100);
-        const bundleData = catData[bundle];
-        if (bundleData) {
-          upgradeRevenue += listings * bundleData.avgCPL;
+
+      // SUBTRACT: Customers upgrading from this bundle
+      Object.entries(upgradeRates).forEach(([targetBundle, rate]) => {
+        const upgraded = originalListings * (rate / 100);
+        finalListings -= upgraded;
+        totalUpgraded += upgraded;
+        upgradeDetails[targetBundle] = {
+          rate,
+          listings: upgraded,
+          targetCPL: newCPLs[targetBundle]
+        };
+      });
+
+      let totalIncomingDowngrades = 0;
+      let totalIncomingUpgrades = 0;
+
+      // ADD: Customers downgrading TO this bundle from higher tiers
+      availableBundles.forEach(sourceBundle => {
+        const sourceBundleIndex = BUNDLE_TIER_ORDER.indexOf(sourceBundle);
+        const thisBundleIndex = BUNDLE_TIER_ORDER.indexOf(bundle);
+
+        if (sourceBundleIndex !== -1 && thisBundleIndex !== -1 && sourceBundleIndex < thisBundleIndex) {
+          const sourceDowngradeRates = bundleDowngradeRates[sourceBundle] || {};
+          const downgradeRateToThis = sourceDowngradeRates[bundle] || 0;
+          const incomingDowngrades = categoryData[sourceBundle].totalListings * (downgradeRateToThis / 100);
+          finalListings += incomingDowngrades;
+          totalIncomingDowngrades += incomingDowngrades;
         }
       });
-      
+
+      // ADD: Customers upgrading TO this bundle from lower tiers
+      availableBundles.forEach(sourceBundle => {
+        const sourceBundleIndex = BUNDLE_TIER_ORDER.indexOf(sourceBundle);
+        const thisBundleIndex = BUNDLE_TIER_ORDER.indexOf(bundle);
+
+        if (sourceBundleIndex !== -1 && thisBundleIndex !== -1 && sourceBundleIndex > thisBundleIndex) {
+          const sourceUpgradeRates = bundleUpgradeRates[sourceBundle] || {};
+          const upgradeRateToThis = sourceUpgradeRates[bundle] || 0;
+          const incomingUpgrades = categoryData[sourceBundle].totalListings * (upgradeRateToThis / 100);
+          finalListings += incomingUpgrades;
+          totalIncomingUpgrades += incomingUpgrades;
+        }
+      });
+
+      // Calculate add-on revenue impact (% change applies to per-listing add-on rate, then multiplied by final listings)
+      const currentAddOnRevenue = addOnData[selectedCategory]?.[bundle] || 0;
+      const addOnLossRate = (addOnLossRates[selectedCategory]?.[bundle] || 0) / 100;
+      const avgAddOnPerListing = originalListings > 0 ? currentAddOnRevenue / originalListings : 0;
+      const adjustedAddOnPerListing = avgAddOnPerListing * (1 + addOnLossRate);
+      const newAddOnRevenue = adjustedAddOnPerListing * finalListings;
+
       // Calculate revenues
-      const newBundleRevenue = stayingListings * newCPL;
-      
-      // Net change
-      const cplRevenueChange = (newBundleRevenue - currentRevenue) + downgradeRevenue + upgradeRevenue;
+      const currentRevenue = bundleData.totalRevenue;
+      const projectedRevenue = finalListings * newCPL;
+      const revenueChange = projectedRevenue - currentRevenue;
       const addOnRevenueChange = newAddOnRevenue - currentAddOnRevenue;
-      const netRevenueChange = cplRevenueChange + addOnRevenueChange - fixedKDLoss;
-      const newRevenue = currentRevenue + netRevenueChange;
-      const percentChange = (netRevenueChange / currentRevenue) * 100;
-      
-      results.push({
-        category,
-        currentRevenue,
-        newRevenue,
-        netRevenueChange,
-        percentChange,
-        currentListings,
+      const totalRevenueChange = revenueChange + addOnRevenueChange;
+
+      bundleResults[bundle] = {
+        bundle,
+        isSelected: selectedBundles[bundle] || false,
         currentCPL,
         newCPL,
-        hasAddOn: currentAddOnRevenue > 0
-      });
+        priceChangePercent: priceChange,
+        currentListings: originalListings,
+        projectedListings: finalListings,
+        listingChange: finalListings - originalListings,
+        churned,
+        downgraded: totalDowngraded,
+        upgraded: totalUpgraded,
+        incomingDowngrades: totalIncomingDowngrades,
+        incomingUpgrades: totalIncomingUpgrades,
+        downgradeDetails,
+        upgradeDetails,
+        currentRevenue,
+        projectedRevenue,
+        revenueChange,
+        currentAddOnRevenue,
+        newAddOnRevenue,
+        addOnRevenueChange,
+        totalRevenueChange,
+        percentChange: currentRevenue > 0 ? (totalRevenueChange / currentRevenue) * 100 : 0
+      };
     });
-    
-    console.log('Portfolio results:', results.length, 'categories');
+
+    // STEP 3: Calculate category-level totals
+    let totalCurrentRevenue = 0;
+    let totalProjectedRevenue = 0;
+    let totalCurrentAddOnRevenue = 0;
+    let totalNewAddOnRevenue = 0;
+
+    Object.values(bundleResults).forEach(result => {
+      totalCurrentRevenue += result.currentRevenue;
+      totalProjectedRevenue += result.projectedRevenue;
+      totalCurrentAddOnRevenue += result.currentAddOnRevenue;
+      totalNewAddOnRevenue += result.newAddOnRevenue;
+    });
+
+    const totalNetChange = (totalProjectedRevenue - totalCurrentRevenue) +
+                          (totalNewAddOnRevenue - totalCurrentAddOnRevenue) -
+                          fixedKDLoss;
+    const totalPercentChange = totalCurrentRevenue > 0 ? (totalNetChange / totalCurrentRevenue) * 100 : 0;
+
+    return {
+      byBundle: bundleResults,
+      categoryTotals: {
+        currentRevenue: totalCurrentRevenue,
+        projectedRevenue: totalProjectedRevenue,
+        revenueChange: totalProjectedRevenue - totalCurrentRevenue,
+        currentAddOnRevenue: totalCurrentAddOnRevenue,
+        newAddOnRevenue: totalNewAddOnRevenue,
+        addOnRevenueChange: totalNewAddOnRevenue - totalCurrentAddOnRevenue,
+        fixedKDLoss,
+        netChange: totalNetChange,
+        percentChange: totalPercentChange
+      },
+      cannibalization: totalCannibalization
+    };
+  }, [isMultiBundleMode, hasData, categoryData, selectedBundles, bundlePriceChanges, bundleChurnRates, bundleDowngradeRates, bundleUpgradeRates, selectedCategory, addOnData, addOnLossRates, fixedKDLoss]);
+
+  // Portfolio Analysis - Calculate impact across all categories
+  const portfolioResults = useMemo(() => {
+    const categories = Object.keys(historicalData);
+    const results = [];
+
+    // Helper to get effective add-on revenue (with overrides)
+    const getAddOnRevenue = (category, bundle) => {
+      if (portfolioAddOnEdits[category]?.[bundle] !== undefined) {
+        return portfolioAddOnEdits[category][bundle];
+      }
+      return addOnData[category]?.[bundle] || 0;
+    };
+
+    if (portfolioIsMultiBundle) {
+      // MULTI-BUNDLE MODE: per-bundle rates applied across all categories
+      const selectedBundleNames = Object.keys(portfolioSelectedBundles).filter(b => portfolioSelectedBundles[b]);
+      if (selectedBundleNames.length === 0) return results;
+
+      categories.forEach(category => {
+        const catData = historicalData[category];
+        const availBundles = Object.keys(catData);
+
+        // Check if any selected bundle exists in this category
+        const bundlesInCategory = selectedBundleNames.filter(b => availBundles.includes(b));
+        if (bundlesInCategory.length === 0) return;
+
+        // Calculate new CPLs for ALL bundles in category
+        const newCPLs = {};
+        availBundles.forEach(bundle => {
+          const pc = portfolioBundlePriceChanges[bundle] || 0;
+          newCPLs[bundle] = catData[bundle].avgCPL * (1 + pc / 100);
+        });
+
+        // Per-bundle calculation
+        const bundleResults = {};
+        availBundles.forEach(bundle => {
+          const bData = catData[bundle];
+          const originalListings = bData.totalListings;
+          const currentCPL = bData.avgCPL;
+          const newCPL = newCPLs[bundle];
+
+          let finalListings = originalListings;
+          const churnRate = portfolioBundleChurnRates[bundle] || 0;
+          const downRates = portfolioBundleDowngradeRates[bundle] || {};
+          const upRates = portfolioBundleUpgradeRates[bundle] || {};
+
+          const churned = originalListings * (churnRate / 100);
+          finalListings -= churned;
+
+          let totalDowngraded = 0;
+          let totalUpgraded = 0;
+          Object.entries(downRates).forEach(([target, rate]) => {
+            if (!availBundles.includes(target)) return;
+            const down = originalListings * (rate / 100);
+            finalListings -= down;
+            totalDowngraded += down;
+          });
+          Object.entries(upRates).forEach(([target, rate]) => {
+            if (!availBundles.includes(target)) return;
+            const up = originalListings * (rate / 100);
+            finalListings -= up;
+            totalUpgraded += up;
+          });
+
+          // Incoming downgrades from higher tiers
+          availBundles.forEach(srcBundle => {
+            const srcIdx = BUNDLE_TIER_ORDER.indexOf(srcBundle);
+            const thisIdx = BUNDLE_TIER_ORDER.indexOf(bundle);
+            if (srcIdx !== -1 && thisIdx !== -1 && srcIdx < thisIdx) {
+              const srcDownRates = portfolioBundleDowngradeRates[srcBundle] || {};
+              const rateToThis = srcDownRates[bundle] || 0;
+              finalListings += catData[srcBundle].totalListings * (rateToThis / 100);
+            }
+          });
+
+          // Incoming upgrades from lower tiers
+          availBundles.forEach(srcBundle => {
+            const srcIdx = BUNDLE_TIER_ORDER.indexOf(srcBundle);
+            const thisIdx = BUNDLE_TIER_ORDER.indexOf(bundle);
+            if (srcIdx !== -1 && thisIdx !== -1 && srcIdx > thisIdx) {
+              const srcUpRates = portfolioBundleUpgradeRates[srcBundle] || {};
+              const rateToThis = srcUpRates[bundle] || 0;
+              finalListings += catData[srcBundle].totalListings * (rateToThis / 100);
+            }
+          });
+
+          // Add-on impact
+          const currentAddOn = getAddOnRevenue(category, bundle);
+          const addOnLossRate = (portfolioBundleAddOnRates[bundle] || 0) / 100;
+          const avgAddOnPerListing = originalListings > 0 ? currentAddOn / originalListings : 0;
+          const newAddOn = avgAddOnPerListing * (1 + addOnLossRate) * finalListings;
+
+          const currentRevenue = bData.totalRevenue;
+          const projectedRevenue = finalListings * newCPL;
+
+          bundleResults[bundle] = {
+            currentRevenue,
+            projectedRevenue,
+            currentAddOn,
+            newAddOn,
+            currentListings: originalListings,
+            projectedListings: finalListings,
+            currentCPL,
+            newCPL
+          };
+        });
+
+        // Sum category totals
+        let totalCurrentRev = 0, totalProjectedRev = 0;
+        let totalCurrentAddOn = 0, totalNewAddOn = 0;
+        let totalCurrentListings = 0;
+        Object.values(bundleResults).forEach(r => {
+          totalCurrentRev += r.currentRevenue;
+          totalProjectedRev += r.projectedRevenue;
+          totalCurrentAddOn += r.currentAddOn;
+          totalNewAddOn += r.newAddOn;
+          totalCurrentListings += r.currentListings;
+        });
+
+        const cplRevenueChange = totalProjectedRev - totalCurrentRev;
+        const addOnRevenueChange = totalNewAddOn - totalCurrentAddOn;
+        const netRevenueChange = cplRevenueChange + addOnRevenueChange - portfolioFixedKDLoss;
+        const currentRevenue = totalCurrentRev;
+        const newRevenue = currentRevenue + netRevenueChange;
+        const percentChange = currentRevenue > 0 ? (netRevenueChange / currentRevenue) * 100 : 0;
+
+        results.push({
+          category,
+          currentRevenue,
+          newRevenue,
+          netRevenueChange,
+          percentChange,
+          currentListings: totalCurrentListings,
+          currentCPL: 0,
+          newCPL: 0,
+          stayRate: 0,
+          effectiveChurn: 0,
+          effectiveDowngrade: 0,
+          effectiveUpgrade: 0,
+          currentAddOnRevenue: totalCurrentAddOn,
+          newAddOnRevenue: totalNewAddOn,
+          downgradeRevenue: 0,
+          upgradeRevenue: 0,
+          cplRevenueChange,
+          addOnRevenueChange,
+          hasAddOn: totalCurrentAddOn > 0
+        });
+      });
+    } else {
+      // SINGLE-BUNDLE MODE (with per-bundle downgrade/upgrade/add-on rates)
+      categories.forEach(category => {
+        const catData = historicalData[category];
+        if (!catData[portfolioBundle]) return;
+
+        const bundleInfo = catData[portfolioBundle];
+        const currentCPL = bundleInfo.avgCPL;
+        const currentListings = bundleInfo.totalListings;
+        const currentRevenue = bundleInfo.totalRevenue;
+
+        const currentAddOnRevenue = getAddOnRevenue(category, portfolioBundle);
+        const newCPL = currentCPL * (1 + portfolioPriceChange / 100);
+
+        const availBundles = Object.keys(catData);
+        const lowerBundles = getLowerTierBundles(portfolioBundle, availBundles);
+        const higherBundles = getHigherTierBundles(portfolioBundle, availBundles);
+        const isBottom = lowerBundles.length === 0;
+        const isTop = higherBundles.length === 0;
+
+        // Sum per-bundle downgrade/upgrade rates (only for bundles available in this category)
+        const totalDowngradeRate = isBottom ? 0 : lowerBundles.reduce((s, b) => s + (portfolioDowngradeRates[b] || 0), 0);
+        const totalUpgradeRate = isTop ? 0 : higherBundles.reduce((s, b) => s + (portfolioUpgradeRates[b] || 0), 0);
+
+        const effectiveChurn = Math.min(portfolioChurnRate, 100);
+        const effectiveDowngrade = Math.min(totalDowngradeRate, 100 - effectiveChurn);
+        const effectiveUpgrade = Math.min(totalUpgradeRate, 100 - effectiveChurn - effectiveDowngrade);
+        const stayRate = Math.max(0, 100 - effectiveChurn - effectiveDowngrade - effectiveUpgrade);
+
+        const stayingListings = currentListings * (stayRate / 100);
+
+        // Per-bundle add-on loss rate for the selected bundle
+        const addOnLossRate = portfolioAddOnLossRates[portfolioBundle] || 0;
+        const avgAddOnPerListing = currentListings > 0 ? currentAddOnRevenue / currentListings : 0;
+        const adjustedAddOnPerListing = avgAddOnPerListing * (1 + addOnLossRate / 100);
+        const newAddOnRevenue = adjustedAddOnPerListing * stayingListings;
+
+        let downgradeRevenue = 0;
+        if (lowerBundles.length > 0 && effectiveDowngrade > 0) {
+          lowerBundles.forEach(bundle => {
+            const bundleRate = portfolioDowngradeRates[bundle] || 0;
+            if (bundleRate > 0 && catData[bundle]) {
+              const listings = currentListings * (bundleRate / 100);
+              downgradeRevenue += listings * catData[bundle].avgCPL;
+            }
+          });
+        }
+
+        let upgradeRevenue = 0;
+        if (higherBundles.length > 0 && effectiveUpgrade > 0) {
+          higherBundles.forEach(bundle => {
+            const bundleRate = portfolioUpgradeRates[bundle] || 0;
+            if (bundleRate > 0 && catData[bundle]) {
+              const listings = currentListings * (bundleRate / 100);
+              upgradeRevenue += listings * catData[bundle].avgCPL;
+            }
+          });
+        }
+
+        const newBundleRevenue = stayingListings * newCPL;
+        const cplRevenueChange = (newBundleRevenue - currentRevenue) + downgradeRevenue + upgradeRevenue;
+        const addOnRevenueChange = newAddOnRevenue - currentAddOnRevenue;
+        const netRevenueChange = cplRevenueChange + addOnRevenueChange - portfolioFixedKDLoss;
+        const newRevenue = currentRevenue + netRevenueChange;
+        const percentChange = currentRevenue > 0 ? (netRevenueChange / currentRevenue) * 100 : 0;
+
+        results.push({
+          category,
+          currentRevenue,
+          newRevenue,
+          netRevenueChange,
+          percentChange,
+          currentListings,
+          currentCPL,
+          newCPL,
+          stayRate,
+          effectiveChurn,
+          effectiveDowngrade,
+          effectiveUpgrade,
+          currentAddOnRevenue,
+          newAddOnRevenue,
+          downgradeRevenue,
+          upgradeRevenue,
+          cplRevenueChange,
+          addOnRevenueChange,
+          hasAddOn: currentAddOnRevenue > 0
+        });
+      });
+    }
+
     return results;
-  }, [historicalData, portfolioBundle, priceChange, churnRate, downgradeRates, upgradeRates, fixedKDLoss, addOnData, addOnLossRates]);
+  }, [historicalData, portfolioBundle, portfolioPriceChange, portfolioChurnRate, portfolioDowngradeRates, portfolioUpgradeRates, portfolioAddOnLossRates, portfolioFixedKDLoss, addOnData, portfolioIsMultiBundle, portfolioSelectedBundles, portfolioBundlePriceChanges, portfolioBundleChurnRates, portfolioBundleDowngradeRates, portfolioBundleUpgradeRates, portfolioBundleAddOnRates, portfolioAddOnEdits]);
 
   // Portfolio aggregate summary
   const portfolioSummary = useMemo(() => {
-    if (!portfolioResults) return null;
-    
+    if (!portfolioResults || portfolioResults.length === 0) return null;
+
     const totalCurrent = portfolioResults.reduce((sum, r) => sum + r.currentRevenue, 0);
     const totalNew = portfolioResults.reduce((sum, r) => sum + r.newRevenue, 0);
     const totalNetChange = portfolioResults.reduce((sum, r) => sum + r.netRevenueChange, 0);
-    const totalPercentChange = (totalNetChange / totalCurrent) * 100;
+    const totalPercentChange = totalCurrent > 0 ? (totalNetChange / totalCurrent) * 100 : 0;
     const positiveCount = portfolioResults.filter(r => r.netRevenueChange > 0).length;
     const negativeCount = portfolioResults.filter(r => r.netRevenueChange < 0).length;
     const neutralCount = portfolioResults.filter(r => r.netRevenueChange === 0).length;
-    
+    const totalCurrentAddOn = portfolioResults.reduce((sum, r) => sum + r.currentAddOnRevenue, 0);
+    const totalNewAddOn = portfolioResults.reduce((sum, r) => sum + r.newAddOnRevenue, 0);
+    const totalAddOnChange = portfolioResults.reduce((sum, r) => sum + r.addOnRevenueChange, 0);
+    const totalCplChange = portfolioResults.reduce((sum, r) => sum + r.cplRevenueChange, 0);
+    const totalDowngradeRevenue = portfolioResults.reduce((sum, r) => sum + r.downgradeRevenue, 0);
+    const totalUpgradeRevenue = portfolioResults.reduce((sum, r) => sum + r.upgradeRevenue, 0);
+
     return {
       totalCurrent,
       totalNew,
@@ -1286,7 +1667,13 @@ Plumber,Super,80`;
       totalCategories: Object.keys(historicalData).length,
       positiveCount,
       negativeCount,
-      neutralCount
+      neutralCount,
+      totalCurrentAddOn,
+      totalNewAddOn,
+      totalAddOnChange,
+      totalCplChange,
+      totalDowngradeRevenue,
+      totalUpgradeRevenue
     };
   }, [portfolioResults, historicalData]);
 
@@ -1366,7 +1753,7 @@ Plumber,Super,80`;
                 : 'text-slate-400 hover:text-slate-200'
             }`}
           >
-            Historical Data
+            Single Category Analysis
           </button>
           <button
             onClick={() => setActiveTab('custom')}
@@ -1640,6 +2027,13 @@ Plumber,Super,80`;
         {/* A/B Testing Tab Content */}
         {activeTab === 'abtest' && (
           <div className="space-y-6 mb-6">
+            {/* Incomplete Feature Disclaimer */}
+            <div className="bg-yellow-900/40 border-2 border-yellow-500/60 rounded-lg p-5 text-center">
+              <div className="text-yellow-400 text-2xl font-bold mb-2">⚠ Work in Progress</div>
+              <p className="text-yellow-200 text-base">
+                This A/B Testing feature is still incomplete and under active development. Functionality may be missing, broken, or subject to change.
+              </p>
+            </div>
             {/* Test Designer Section */}
             <div className="bg-slate-800 rounded-lg p-6">
               <h2 className="text-xl font-bold mb-4">Test Designer</h2>
@@ -1901,21 +2295,753 @@ Plumber,Super,80`;
         {/* Portfolio Analysis Tab Content */}
         {activeTab === 'portfolio' && (
           <div className="space-y-6 mb-6">
-            <div className="bg-slate-800 rounded-lg p-6">
-              <h2 className="text-xl font-bold mb-4">Portfolio Analysis - TESTING</h2>
-              <p>If you can see this, the tab is rendering.</p>
-              <p>Portfolio Bundle: {portfolioBundle}</p>
-              <p>Portfolio Results: {portfolioResults ? 'Has data' : 'No data yet'}</p>
-              
-              <button
-                onClick={() => {
-                  alert('Button clicked!');
-                  setPortfolioResults([{ test: 'data' }]);
-                }}
-                className="mt-4 px-4 py-2 bg-blue-600 rounded text-white"
-              >
-                Test Button
-              </button>
+            <div className="bg-amber-900/30 border border-amber-700 rounded-lg px-4 py-3 text-amber-300 text-sm">
+              Not tested and validated yet
+            </div>
+            {/* Scenario Configuration */}
+            <div className="grid md:grid-cols-4 gap-4">
+              <div className="bg-slate-800 rounded-lg p-4 md:col-span-1">
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="text-lg font-semibold">Scenario Controls</h2>
+                  <button
+                    onClick={() => setPortfolioIsMultiBundle(!portfolioIsMultiBundle)}
+                    className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                      portfolioIsMultiBundle
+                        ? 'bg-purple-600 text-white'
+                        : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+                    }`}
+                  >
+                    {portfolioIsMultiBundle ? 'Multi-Bundle Mode' : 'Single Bundle Mode'}
+                  </button>
+                </div>
+                <div className="space-y-4">
+                  {!portfolioIsMultiBundle ? (
+                    <>
+                      {/* SINGLE-BUNDLE MODE CONTROLS */}
+                      <div>
+                        <label className="block text-sm text-slate-400 mb-1">Bundle</label>
+                        <select
+                          value={portfolioBundle}
+                          onChange={(e) => setPortfolioBundle(e.target.value)}
+                          className="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-white"
+                        >
+                          {BUNDLE_TIER_ORDER.map(b => (
+                            <option key={b} value={b}>{b}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-sm text-slate-400 mb-1">
+                          Price Change: <span className="text-emerald-400 font-bold">{portfolioPriceChange > 0 ? '+' : ''}{portfolioPriceChange}%</span>
+                        </label>
+                        <div className="flex gap-2 items-center">
+                          <input type="range" min="-100" max="500" step="0.1" value={portfolioPriceChange}
+                            onChange={(e) => setPortfolioPriceChange(Number(e.target.value))}
+                            className="flex-1 h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer" />
+                          <input type="number" min="-100" max="500" step="0.1" value={portfolioPriceChange}
+                            onChange={(e) => setPortfolioPriceChange(Math.max(-100, Math.min(500, Number(e.target.value))))}
+                            className="w-20 bg-slate-700 border border-slate-600 rounded px-2 py-1 text-white text-sm" />
+                        </div>
+                      </div>
+                      <div>
+                        <label className="block text-sm text-slate-400 mb-1">
+                          Churn Rate: <span className="text-red-400 font-bold">{portfolioChurnRate}%</span>
+                        </label>
+                        <div className="flex gap-2 items-center">
+                          <input type="range" min="0" max="100" step="0.1" value={portfolioChurnRate}
+                            onChange={(e) => setPortfolioChurnRate(Number(e.target.value))}
+                            className="flex-1 h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer" />
+                          <input type="number" min="0" max="100" step="0.1" value={portfolioChurnRate}
+                            onChange={(e) => setPortfolioChurnRate(Math.max(0, Math.min(100, Number(e.target.value))))}
+                            className="w-20 bg-slate-700 border border-slate-600 rounded px-2 py-1 text-white text-sm" />
+                        </div>
+                      </div>
+                      {/* Downgrade Distribution - per bundle */}
+                      {(() => {
+                        const lowerBundles = getLowerTierBundles(portfolioBundle, BUNDLE_TIER_ORDER);
+                        const totalDowngradeRate = Object.values(portfolioDowngradeRates).reduce((s, v) => s + (v || 0), 0);
+                        if (lowerBundles.length === 0) return null;
+                        return (
+                          <div className="border-t border-slate-700 pt-3">
+                            <label className="block text-sm text-slate-400 mb-2">
+                              Downgrade Distribution: <span className="text-amber-400 font-bold">{totalDowngradeRate.toFixed(1)}% total</span>
+                            </label>
+                            <div className="space-y-2">
+                              {lowerBundles.map(bundle => (
+                                <div key={bundle} className="bg-slate-700/30 rounded p-2">
+                                  <div className="flex justify-between items-center mb-1">
+                                    <span className="text-xs text-amber-400">{bundle}</span>
+                                    <span className="text-xs text-slate-400">
+                                      {portfolioDowngradeRates[bundle] || 0}%
+                                    </span>
+                                  </div>
+                                  <div className="flex gap-2 items-center">
+                                    <input type="range" min="-100" max="500" step="0.1"
+                                      value={portfolioDowngradeRates[bundle] || 0}
+                                      onChange={(e) => setPortfolioDowngradeRates({
+                                        ...portfolioDowngradeRates,
+                                        [bundle]: Number(e.target.value)
+                                      })}
+                                      className="flex-1 h-1.5 bg-slate-600 rounded-lg appearance-none cursor-pointer" />
+                                    <input type="number" min="-100" max="500" step="0.1"
+                                      value={portfolioDowngradeRates[bundle] || 0}
+                                      onChange={(e) => setPortfolioDowngradeRates({
+                                        ...portfolioDowngradeRates,
+                                        [bundle]: Math.max(-100, Math.min(500, Number(e.target.value)))
+                                      })}
+                                      className="w-16 bg-slate-700 border border-slate-600 rounded px-2 py-1 text-white text-xs" />
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        );
+                      })()}
+
+                      {/* Upgrade Distribution - per bundle */}
+                      {(() => {
+                        const higherBundles = getHigherTierBundles(portfolioBundle, BUNDLE_TIER_ORDER);
+                        const totalUpgradeRate = Object.values(portfolioUpgradeRates).reduce((s, v) => s + (v || 0), 0);
+                        if (higherBundles.length === 0) return null;
+                        return (
+                          <div className="border-t border-slate-700 pt-3">
+                            <label className="block text-sm text-slate-400 mb-2">
+                              Upgrade Distribution: <span className="text-blue-400 font-bold">{totalUpgradeRate.toFixed(1)}% total</span>
+                            </label>
+                            <div className="space-y-2">
+                              {higherBundles.map(bundle => (
+                                <div key={bundle} className="bg-slate-700/30 rounded p-2">
+                                  <div className="flex justify-between items-center mb-1">
+                                    <span className="text-xs text-blue-400">{bundle}</span>
+                                    <span className="text-xs text-slate-400">
+                                      {portfolioUpgradeRates[bundle] || 0}%
+                                    </span>
+                                  </div>
+                                  <div className="flex gap-2 items-center">
+                                    <input type="range" min="-100" max="500" step="0.1"
+                                      value={portfolioUpgradeRates[bundle] || 0}
+                                      onChange={(e) => setPortfolioUpgradeRates({
+                                        ...portfolioUpgradeRates,
+                                        [bundle]: Number(e.target.value)
+                                      })}
+                                      className="flex-1 h-1.5 bg-slate-600 rounded-lg appearance-none cursor-pointer" />
+                                    <input type="number" min="-100" max="500" step="0.1"
+                                      value={portfolioUpgradeRates[bundle] || 0}
+                                      onChange={(e) => setPortfolioUpgradeRates({
+                                        ...portfolioUpgradeRates,
+                                        [bundle]: Math.max(-100, Math.min(500, Number(e.target.value)))
+                                      })}
+                                      className="w-16 bg-slate-700 border border-slate-600 rounded px-2 py-1 text-white text-xs" />
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        );
+                      })()}
+
+                      {/* Add-On Revenue Change % per bundle */}
+                      <div className="border-t border-slate-700 pt-3">
+                        <label className="block text-sm text-slate-400 mb-2">
+                          Add-On Revenue Change %
+                        </label>
+                        <div className="space-y-2">
+                          {BUNDLE_TIER_ORDER.map(bundle => {
+                            const currentRate = portfolioAddOnLossRates[bundle] || 0;
+                            const isSelected = bundle === portfolioBundle;
+                            return (
+                              <div key={bundle} className="bg-slate-700/30 rounded p-2">
+                                <div className="flex justify-between items-center mb-1">
+                                  <span className={`text-xs ${isSelected ? 'text-purple-400' : 'text-purple-300'}`}>
+                                    {bundle} {isSelected && '(selected)'}
+                                  </span>
+                                  <span className="text-xs text-slate-400">
+                                    {currentRate >= 0 ? '+' : ''}{currentRate}%
+                                  </span>
+                                </div>
+                                <div className="flex gap-2 items-center">
+                                  <input type="range" min="-100" max="500" step="0.1"
+                                    value={currentRate}
+                                    onChange={(e) => setPortfolioAddOnLossRates({
+                                      ...portfolioAddOnLossRates,
+                                      [bundle]: Number(e.target.value)
+                                    })}
+                                    className="flex-1 h-1.5 bg-slate-600 rounded-lg appearance-none cursor-pointer" />
+                                  <input type="number" min="-100" max="500" step="0.1"
+                                    value={currentRate}
+                                    onChange={(e) => setPortfolioAddOnLossRates({
+                                      ...portfolioAddOnLossRates,
+                                      [bundle]: Math.max(-100, Math.min(500, Number(e.target.value)))
+                                    })}
+                                    className="w-16 bg-slate-700 border border-slate-600 rounded px-2 py-1 text-white text-xs" />
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      <div className="pt-2 border-t border-slate-700">
+                        <div className="text-xs text-slate-400">
+                          {(() => {
+                            const totalDown = Object.values(portfolioDowngradeRates).reduce((s, v) => s + (v || 0), 0);
+                            const totalUp = Object.values(portfolioUpgradeRates).reduce((s, v) => s + (v || 0), 0);
+                            return `Stay ${Math.max(0, 100 - portfolioChurnRate - totalDown - totalUp).toFixed(0)}% + Churn ${portfolioChurnRate}% + Down ${totalDown.toFixed(1)}% + Up ${totalUp.toFixed(1)}% = 100%`;
+                          })()}
+                        </div>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      {/* MULTI-BUNDLE MODE CONTROLS */}
+                      <div>
+                        <label className="block text-sm text-slate-400 mb-2">Select Bundles to Modify</label>
+                        <div className="space-y-2 max-h-60 overflow-y-auto">
+                          {BUNDLE_TIER_ORDER.map(bundle => (
+                            <label key={bundle} className="flex items-center gap-3 p-2 rounded-lg hover:bg-slate-700/50 cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={portfolioSelectedBundles[bundle] || false}
+                                onChange={(e) => {
+                                  setPortfolioSelectedBundles({
+                                    ...portfolioSelectedBundles,
+                                    [bundle]: e.target.checked
+                                  });
+                                  if (e.target.checked) {
+                                    if (!portfolioBundlePriceChanges[bundle]) {
+                                      setPortfolioBundlePriceChanges({ ...portfolioBundlePriceChanges, [bundle]: 0 });
+                                    }
+                                    if (!portfolioBundleChurnRates[bundle]) {
+                                      setPortfolioBundleChurnRates({ ...portfolioBundleChurnRates, [bundle]: 10 });
+                                    }
+                                  }
+                                }}
+                                className="w-4 h-4 rounded border-slate-600 bg-slate-700 text-purple-600"
+                              />
+                              <span className="flex-1 text-sm text-white">{bundle}</span>
+                            </label>
+                          ))}
+                        </div>
+                        <div className="text-xs text-slate-500 mt-2">
+                          {Object.values(portfolioSelectedBundles).filter(Boolean).length} bundle(s) selected
+                        </div>
+                      </div>
+
+                      {/* Per-bundle accordion cards */}
+                      {Object.keys(portfolioSelectedBundles).filter(b => portfolioSelectedBundles[b]).length === 0 ? (
+                        <div className="text-center text-slate-400 py-8">
+                          Select bundles above to configure price changes
+                        </div>
+                      ) : (
+                        BUNDLE_TIER_ORDER.filter(b => portfolioSelectedBundles[b]).map(bundle => {
+                          const bundleIndex = BUNDLE_TIER_ORDER.indexOf(bundle);
+                          const lowerBundlesForThis = BUNDLE_TIER_ORDER.filter((b, i) => i > bundleIndex);
+                          const higherBundlesForThis = BUNDLE_TIER_ORDER.filter((b, i) => i < bundleIndex);
+                          const isBottomTierThis = lowerBundlesForThis.length === 0;
+                          const isTopTierThis = higherBundlesForThis.length === 0;
+
+                          return (
+                            <div key={bundle} className="border border-purple-700 rounded-lg p-3 bg-purple-900/10">
+                              <div className="font-semibold text-purple-400 mb-3 flex items-center justify-between">
+                                <span>{bundle}</span>
+                              </div>
+
+                              {/* Price Change */}
+                              <div className="mb-3">
+                                <label className="block text-xs text-slate-400 mb-1">
+                                  Price Change: <span className="text-emerald-400 font-bold">
+                                    {(portfolioBundlePriceChanges[bundle] || 0) > 0 ? '+' : ''}{portfolioBundlePriceChanges[bundle] || 0}%
+                                  </span>
+                                </label>
+                                <div className="flex gap-2 items-center">
+                                  <input
+                                    type="range"
+                                    min="-100"
+                                    max="500"
+                                    step="0.1"
+                                    value={portfolioBundlePriceChanges[bundle] || 0}
+                                    onChange={(e) => setPortfolioBundlePriceChanges({
+                                      ...portfolioBundlePriceChanges,
+                                      [bundle]: Number(e.target.value)
+                                    })}
+                                    className="flex-1 h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer"
+                                  />
+                                  <input
+                                    type="number"
+                                    min="-100"
+                                    max="500"
+                                    step="0.1"
+                                    value={portfolioBundlePriceChanges[bundle] || 0}
+                                    onChange={(e) => {
+                                      const val = Number(e.target.value);
+                                      setPortfolioBundlePriceChanges({
+                                        ...portfolioBundlePriceChanges,
+                                        [bundle]: Math.max(-100, Math.min(500, val))
+                                      });
+                                    }}
+                                    className="w-16 bg-slate-700 border border-slate-600 rounded px-2 py-1 text-white text-xs"
+                                  />
+                                </div>
+                              </div>
+
+                              {/* Churn Rate */}
+                              <div className="mb-3">
+                                <label className="block text-xs text-slate-400 mb-1">
+                                  Churn Rate: <span className="text-red-400 font-bold">{portfolioBundleChurnRates[bundle] || 0}%</span>
+                                </label>
+                                <div className="flex gap-2 items-center">
+                                  <input
+                                    type="range"
+                                    min="-100"
+                                    max="500"
+                                    step="0.1"
+                                    value={portfolioBundleChurnRates[bundle] || 0}
+                                    onChange={(e) => setPortfolioBundleChurnRates({
+                                      ...portfolioBundleChurnRates,
+                                      [bundle]: Number(e.target.value)
+                                    })}
+                                    className="flex-1 h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer"
+                                  />
+                                  <input
+                                    type="number"
+                                    min="-100"
+                                    max="500"
+                                    step="0.1"
+                                    value={portfolioBundleChurnRates[bundle] || 0}
+                                    onChange={(e) => {
+                                      const val = Number(e.target.value);
+                                      setPortfolioBundleChurnRates({
+                                        ...portfolioBundleChurnRates,
+                                        [bundle]: Math.max(-100, Math.min(500, val))
+                                      });
+                                    }}
+                                    className="w-16 bg-slate-700 border border-slate-600 rounded px-2 py-1 text-white text-xs"
+                                  />
+                                </div>
+                              </div>
+
+                              {/* Downgrade Rates */}
+                              {!isBottomTierThis && lowerBundlesForThis.length > 0 && (
+                                <div className="mb-3 border-t border-slate-700 pt-2">
+                                  <label className="block text-xs text-slate-400 mb-2">Downgrade To:</label>
+                                  <div className="space-y-2">
+                                    {lowerBundlesForThis.map(targetBundle => (
+                                      <div key={targetBundle}>
+                                        <div className="flex justify-between items-center mb-1">
+                                          <span className="text-xs text-amber-400">{targetBundle}</span>
+                                          <span className="text-xs text-slate-400">
+                                            {portfolioBundleDowngradeRates[bundle]?.[targetBundle] || 0}%
+                                          </span>
+                                        </div>
+                                        <div className="flex gap-2 items-center">
+                                          <input
+                                            type="range"
+                                            min="-100"
+                                            max="500"
+                                            step="0.1"
+                                            value={portfolioBundleDowngradeRates[bundle]?.[targetBundle] || 0}
+                                            onChange={(e) => {
+                                              const newRates = { ...portfolioBundleDowngradeRates };
+                                              if (!newRates[bundle]) newRates[bundle] = {};
+                                              newRates[bundle][targetBundle] = Number(e.target.value);
+                                              setPortfolioBundleDowngradeRates(newRates);
+                                            }}
+                                            className="flex-1 h-1 bg-slate-600 rounded-lg appearance-none cursor-pointer"
+                                          />
+                                          <input
+                                            type="number"
+                                            min="-100"
+                                            max="500"
+                                            step="0.1"
+                                            value={portfolioBundleDowngradeRates[bundle]?.[targetBundle] || 0}
+                                            onChange={(e) => {
+                                              const val = Number(e.target.value);
+                                              const newRates = { ...portfolioBundleDowngradeRates };
+                                              if (!newRates[bundle]) newRates[bundle] = {};
+                                              newRates[bundle][targetBundle] = Math.max(-100, Math.min(500, val));
+                                              setPortfolioBundleDowngradeRates(newRates);
+                                            }}
+                                            className="w-14 bg-slate-700 border border-slate-600 rounded px-1 py-0.5 text-white text-xs"
+                                          />
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+
+                              {/* Upgrade Rates */}
+                              {!isTopTierThis && higherBundlesForThis.length > 0 && (
+                                <div className="border-t border-slate-700 pt-2">
+                                  <label className="block text-xs text-slate-400 mb-2">Upgrade To:</label>
+                                  <div className="space-y-2">
+                                    {higherBundlesForThis.map(targetBundle => (
+                                      <div key={targetBundle}>
+                                        <div className="flex justify-between items-center mb-1">
+                                          <span className="text-xs text-blue-400">{targetBundle}</span>
+                                          <span className="text-xs text-slate-400">
+                                            {portfolioBundleUpgradeRates[bundle]?.[targetBundle] || 0}%
+                                          </span>
+                                        </div>
+                                        <div className="flex gap-2 items-center">
+                                          <input
+                                            type="range"
+                                            min="-100"
+                                            max="500"
+                                            step="0.1"
+                                            value={portfolioBundleUpgradeRates[bundle]?.[targetBundle] || 0}
+                                            onChange={(e) => {
+                                              const newRates = { ...portfolioBundleUpgradeRates };
+                                              if (!newRates[bundle]) newRates[bundle] = {};
+                                              newRates[bundle][targetBundle] = Number(e.target.value);
+                                              setPortfolioBundleUpgradeRates(newRates);
+                                            }}
+                                            className="flex-1 h-1 bg-slate-600 rounded-lg appearance-none cursor-pointer"
+                                          />
+                                          <input
+                                            type="number"
+                                            min="-100"
+                                            max="500"
+                                            step="0.1"
+                                            value={portfolioBundleUpgradeRates[bundle]?.[targetBundle] || 0}
+                                            onChange={(e) => {
+                                              const val = Number(e.target.value);
+                                              const newRates = { ...portfolioBundleUpgradeRates };
+                                              if (!newRates[bundle]) newRates[bundle] = {};
+                                              newRates[bundle][targetBundle] = Math.max(-100, Math.min(500, val));
+                                              setPortfolioBundleUpgradeRates(newRates);
+                                            }}
+                                            className="w-14 bg-slate-700 border border-slate-600 rounded px-1 py-0.5 text-white text-xs"
+                                          />
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+
+                            </div>
+                          );
+                        })
+                      )}
+
+                      {/* Add-On Revenue Change % for All Bundles */}
+                      <div className="border-t border-slate-700 pt-3">
+                        <label className="block text-sm text-slate-400 mb-2">
+                          Add-On Revenue Change %
+                        </label>
+                        <div className="space-y-2">
+                          {BUNDLE_TIER_ORDER.map(bundle => {
+                            const currentRate = portfolioBundleAddOnRates[bundle] || 0;
+                            const isSelected = portfolioSelectedBundles[bundle];
+                            return (
+                              <div
+                                key={bundle}
+                                className={`bg-slate-700/30 rounded p-2 ${isSelected ? 'border border-purple-700/50' : ''}`}
+                              >
+                                <div className="flex justify-between items-center mb-1">
+                                  <span className={`text-xs ${isSelected ? 'text-purple-400' : 'text-purple-300'}`}>
+                                    {bundle} {isSelected && '(selected)'}
+                                  </span>
+                                  <span className="text-xs text-slate-400">
+                                    {currentRate >= 0 ? '+' : ''}{currentRate}%
+                                  </span>
+                                </div>
+                                <div className="flex gap-2 items-center">
+                                  <input
+                                    type="range"
+                                    min="-100"
+                                    max="500"
+                                    step="0.1"
+                                    value={currentRate}
+                                    onChange={(e) => {
+                                      setPortfolioBundleAddOnRates({
+                                        ...portfolioBundleAddOnRates,
+                                        [bundle]: Number(e.target.value)
+                                      });
+                                    }}
+                                    className="flex-1 h-1.5 bg-slate-600 rounded-lg appearance-none cursor-pointer"
+                                  />
+                                  <input
+                                    type="number"
+                                    min="-100"
+                                    max="500"
+                                    step="0.1"
+                                    value={currentRate}
+                                    onChange={(e) => {
+                                      const val = Number(e.target.value);
+                                      setPortfolioBundleAddOnRates({
+                                        ...portfolioBundleAddOnRates,
+                                        [bundle]: Math.max(-100, Math.min(500, val))
+                                      });
+                                    }}
+                                    className="w-16 bg-slate-700 border border-slate-600 rounded px-2 py-1 text-white text-xs"
+                                  />
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    </>
+                  )}
+
+                  {/* Fixed KD Loss - shared across modes */}
+                  <div className="border-t border-slate-700 pt-3">
+                    <label className="block text-sm text-slate-400 mb-1">
+                      Fixed KD Loss per Category: <span className="text-red-400 font-bold">{portfolioFixedKDLoss.toLocaleString()} KD</span>
+                    </label>
+                    <input type="number" min="0" step="100" value={portfolioFixedKDLoss}
+                      onChange={(e) => setPortfolioFixedKDLoss(Number(e.target.value) || 0)}
+                      placeholder="0"
+                      className="w-full bg-slate-700 border border-slate-600 rounded px-3 py-1.5 text-white text-sm" />
+                  </div>
+
+                  {/* Add-On Revenue Editor */}
+                  <div className="border-t border-slate-700 pt-3">
+                    <button
+                      onClick={() => setPortfolioAddOnEditorOpen(!portfolioAddOnEditorOpen)}
+                      className="flex items-center justify-between w-full text-sm text-slate-400 hover:text-white transition-colors"
+                    >
+                      <span>Edit Add-On Revenue</span>
+                      <span>{portfolioAddOnEditorOpen ? '▼' : '▶'}</span>
+                    </button>
+                    {portfolioAddOnEditorOpen && (
+                      <div className="mt-2 space-y-2 max-h-64 overflow-y-auto">
+                        <button
+                          onClick={() => setPortfolioAddOnEdits({})}
+                          className="text-xs text-red-400 hover:text-red-300 mb-1"
+                        >
+                          Reset All Overrides
+                        </button>
+                        {Object.keys(historicalData).sort().map(cat => {
+                          const catAddOns = addOnData[cat];
+                          if (!catAddOns || Object.keys(catAddOns).length === 0) return null;
+                          return (
+                            <div key={cat} className="bg-slate-700/30 rounded p-2">
+                              <div className="text-xs text-slate-300 font-semibold mb-1">{cat}</div>
+                              <div className="space-y-1">
+                                {Object.entries(catAddOns).sort((a, b) => {
+                                  const iA = BUNDLE_TIER_ORDER.indexOf(a[0]);
+                                  const iB = BUNDLE_TIER_ORDER.indexOf(b[0]);
+                                  return (iA === -1 ? 999 : iA) - (iB === -1 ? 999 : iB);
+                                }).map(([bundle, revenue]) => {
+                                  const edited = portfolioAddOnEdits[cat]?.[bundle];
+                                  const isEdited = edited !== undefined;
+                                  return (
+                                    <div key={bundle} className="flex items-center gap-2">
+                                      <span className={`text-xs w-16 ${isEdited ? 'text-yellow-400' : 'text-slate-400'}`}>{bundle}</span>
+                                      <input
+                                        type="number"
+                                        min="0"
+                                        step="1"
+                                        value={isEdited ? edited : revenue}
+                                        onChange={(e) => {
+                                          const val = Number(e.target.value) || 0;
+                                          setPortfolioAddOnEdits(prev => ({
+                                            ...prev,
+                                            [cat]: { ...(prev[cat] || {}), [bundle]: val }
+                                          }));
+                                        }}
+                                        className={`w-20 text-xs px-1 py-0.5 rounded border ${
+                                          isEdited
+                                            ? 'bg-yellow-900/30 border-yellow-600 text-yellow-300'
+                                            : 'bg-slate-700 border-slate-600 text-white'
+                                        }`}
+                                      />
+                                      <span className="text-xs text-slate-500">KD</span>
+                                      {isEdited && (
+                                        <button
+                                          onClick={() => {
+                                            setPortfolioAddOnEdits(prev => {
+                                              const newEdits = { ...prev };
+                                              if (newEdits[cat]) {
+                                                delete newEdits[cat][bundle];
+                                                if (Object.keys(newEdits[cat]).length === 0) delete newEdits[cat];
+                                              }
+                                              return newEdits;
+                                            });
+                                          }}
+                                          className="text-xs text-red-400 hover:text-red-300"
+                                        >
+                                          x
+                                        </button>
+                                      )}
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                    {Object.keys(portfolioAddOnEdits).length > 0 && (
+                      <div className="text-xs text-yellow-400 mt-1">
+                        {Object.values(portfolioAddOnEdits).reduce((s, o) => s + Object.keys(o).length, 0)} override(s) active
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Results Area */}
+              <div className="md:col-span-3 space-y-4">
+                {/* Summary Cards */}
+                {portfolioSummary && (
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                    <div className="bg-slate-800 rounded-lg p-4">
+                      <div className="text-xs text-slate-400 mb-1">Total Current Revenue</div>
+                      <div className="text-lg font-bold text-white">{portfolioSummary.totalCurrent.toLocaleString(undefined, {maximumFractionDigits: 0})} KD</div>
+                    </div>
+                    <div className="bg-slate-800 rounded-lg p-4">
+                      <div className="text-xs text-slate-400 mb-1">Total Net Change</div>
+                      <div className={`text-lg font-bold ${portfolioSummary.totalNetChange >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                        {portfolioSummary.totalNetChange >= 0 ? '+' : ''}{portfolioSummary.totalNetChange.toLocaleString(undefined, {maximumFractionDigits: 0})} KD
+                        <span className="text-sm ml-1">({portfolioSummary.totalPercentChange >= 0 ? '+' : ''}{portfolioSummary.totalPercentChange.toFixed(1)}%)</span>
+                      </div>
+                    </div>
+                    <div className="bg-slate-800 rounded-lg p-4">
+                      <div className="text-xs text-slate-400 mb-1">Categories Analyzed</div>
+                      <div className="text-lg font-bold text-white">{portfolioSummary.categoriesAnalyzed} <span className="text-sm text-slate-400">/ {portfolioSummary.totalCategories}</span></div>
+                    </div>
+                    <div className="bg-slate-800 rounded-lg p-4">
+                      <div className="text-xs text-slate-400 mb-1">Impact Breakdown</div>
+                      <div className="text-sm">
+                        <span className="text-emerald-400 font-bold">{portfolioSummary.positiveCount}</span>
+                        <span className="text-slate-500 mx-1">/</span>
+                        <span className="text-red-400 font-bold">{portfolioSummary.negativeCount}</span>
+                        <span className="text-slate-500 mx-1">/</span>
+                        <span className="text-slate-400 font-bold">{portfolioSummary.neutralCount}</span>
+                        <span className="text-xs text-slate-500 ml-1">+/-/=</span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Bar Chart */}
+                {portfolioResults.length > 0 && (
+                  <div className="bg-slate-800 rounded-lg p-4">
+                    <h3 className="text-sm font-semibold mb-3 text-slate-300">Net Revenue Change by Category</h3>
+                    <ResponsiveContainer width="100%" height={Math.max(300, portfolioResults.length * 28)}>
+                      <BarChart
+                        layout="vertical"
+                        data={[...portfolioResults].sort((a, b) => a.netRevenueChange - b.netRevenueChange)}
+                        margin={{ top: 5, right: 30, left: 100, bottom: 5 }}
+                      >
+                        <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
+                        <XAxis type="number" stroke="#94a3b8" tick={{ fontSize: 11 }} tickFormatter={(v) => `${v >= 0 ? '+' : ''}${v.toLocaleString()}`} />
+                        <YAxis type="category" dataKey="category" stroke="#94a3b8" tick={{ fontSize: 11 }} width={95} />
+                        <Tooltip
+                          contentStyle={{ backgroundColor: '#1e293b', border: '1px solid #475569', borderRadius: '8px' }}
+                          formatter={(value) => [`${value >= 0 ? '+' : ''}${value.toLocaleString(undefined, {maximumFractionDigits: 0})} KD`, 'Net Change']}
+                        />
+                        <ReferenceLine x={0} stroke="#64748b" />
+                        <Bar dataKey="netRevenueChange" name="Net Change">
+                          {[...portfolioResults].sort((a, b) => a.netRevenueChange - b.netRevenueChange).map((entry, index) => (
+                            <Cell key={index} fill={entry.netRevenueChange >= 0 ? '#10b981' : '#ef4444'} />
+                          ))}
+                        </Bar>
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                )}
+
+                {/* Per-Category Results Table */}
+                {portfolioResults.length > 0 && (
+                  <div className="bg-slate-800 rounded-lg p-4 overflow-x-auto">
+                    <h3 className="text-sm font-semibold mb-3 text-slate-300">Per-Category Breakdown</h3>
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b border-slate-700">
+                          {[
+                            { key: 'category', label: 'Category', align: 'left' },
+                            { key: 'currentRevenue', label: 'Current Rev', align: 'right' },
+                            { key: 'newRevenue', label: 'New Rev', align: 'right' },
+                            { key: 'netRevenueChange', label: 'Net Change', align: 'right' },
+                            { key: 'percentChange', label: '% Change', align: 'right' },
+                            { key: 'currentListings', label: 'Listings', align: 'right' },
+                            { key: 'currentCPL', label: 'Current CPL', align: 'right' },
+                            { key: 'newCPL', label: 'New CPL', align: 'right' },
+                          ].map(col => (
+                            <th
+                              key={col.key}
+                              className={`py-2 px-3 text-${col.align} text-slate-400 cursor-pointer hover:text-white transition-colors select-none`}
+                              onClick={() => {
+                                if (portfolioSortBy === col.key) {
+                                  setPortfolioSortAsc(!portfolioSortAsc);
+                                } else {
+                                  setPortfolioSortBy(col.key);
+                                  setPortfolioSortAsc(col.key === 'category');
+                                }
+                              }}
+                            >
+                              {col.label} {portfolioSortBy === col.key ? (portfolioSortAsc ? '▲' : '▼') : ''}
+                            </th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {[...portfolioResults]
+                          .sort((a, b) => {
+                            const valA = a[portfolioSortBy];
+                            const valB = b[portfolioSortBy];
+                            if (typeof valA === 'string') {
+                              return portfolioSortAsc ? valA.localeCompare(valB) : valB.localeCompare(valA);
+                            }
+                            return portfolioSortAsc ? valA - valB : valB - valA;
+                          })
+                          .map(row => (
+                            <tr
+                              key={row.category}
+                              className={`border-b border-slate-700/50 ${row.netRevenueChange > 0 ? 'bg-emerald-900/10' : row.netRevenueChange < 0 ? 'bg-red-900/10' : ''}`}
+                            >
+                              <td className="py-2 px-3 text-white">{row.category}</td>
+                              <td className="py-2 px-3 text-right font-mono text-slate-300">{row.currentRevenue.toLocaleString(undefined, {maximumFractionDigits: 0})}</td>
+                              <td className="py-2 px-3 text-right font-mono text-slate-300">{row.newRevenue.toLocaleString(undefined, {maximumFractionDigits: 0})}</td>
+                              <td className={`py-2 px-3 text-right font-mono font-bold ${row.netRevenueChange >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                                {row.netRevenueChange >= 0 ? '+' : ''}{row.netRevenueChange.toLocaleString(undefined, {maximumFractionDigits: 0})}
+                              </td>
+                              <td className={`py-2 px-3 text-right font-mono ${row.percentChange >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                                {row.percentChange >= 0 ? '+' : ''}{row.percentChange.toFixed(1)}%
+                              </td>
+                              <td className="py-2 px-3 text-right font-mono text-slate-300">{row.currentListings.toLocaleString()}</td>
+                              <td className="py-2 px-3 text-right font-mono text-slate-300">{portfolioIsMultiBundle ? '—' : row.currentCPL.toFixed(2)}</td>
+                              <td className="py-2 px-3 text-right font-mono text-slate-300">{portfolioIsMultiBundle ? '—' : row.newCPL.toFixed(2)}</td>
+                            </tr>
+                          ))}
+                      </tbody>
+                      {portfolioSummary && (
+                        <tfoot>
+                          <tr className="border-t-2 border-slate-600 font-bold">
+                            <td className="py-2 px-3 text-cyan-400">TOTAL</td>
+                            <td className="py-2 px-3 text-right font-mono text-cyan-400">{portfolioSummary.totalCurrent.toLocaleString(undefined, {maximumFractionDigits: 0})}</td>
+                            <td className="py-2 px-3 text-right font-mono text-cyan-400">{portfolioSummary.totalNew.toLocaleString(undefined, {maximumFractionDigits: 0})}</td>
+                            <td className={`py-2 px-3 text-right font-mono ${portfolioSummary.totalNetChange >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                              {portfolioSummary.totalNetChange >= 0 ? '+' : ''}{portfolioSummary.totalNetChange.toLocaleString(undefined, {maximumFractionDigits: 0})}
+                            </td>
+                            <td className={`py-2 px-3 text-right font-mono ${portfolioSummary.totalPercentChange >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                              {portfolioSummary.totalPercentChange >= 0 ? '+' : ''}{portfolioSummary.totalPercentChange.toFixed(1)}%
+                            </td>
+                            <td className="py-2 px-3 text-right font-mono text-cyan-400">{portfolioResults.reduce((s, r) => s + r.currentListings, 0).toLocaleString()}</td>
+                            <td className="py-2 px-3 text-right text-slate-500">—</td>
+                            <td className="py-2 px-3 text-right text-slate-500">—</td>
+                          </tr>
+                        </tfoot>
+                      )}
+                    </table>
+                  </div>
+                )}
+
+                {portfolioResults.length === 0 && (
+                  <div className="bg-slate-800 rounded-lg p-8 text-center text-slate-400">
+                    {portfolioIsMultiBundle
+                      ? 'Select bundles and configure rates to see portfolio impact.'
+                      : <>No categories have the <span className="text-white font-bold">{portfolioBundle}</span> bundle. Try selecting a different bundle.</>
+                    }
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         )}
@@ -1943,32 +3069,95 @@ Plumber,Super,80`;
               ))}
             </select>
           </div>
-          
+
           <div className="bg-slate-800 rounded-lg p-4">
-            <label className="block text-sm text-slate-400 mb-2">Select Bundle to Analyze</label>
-            <select
-              value={selectedBundle}
-              onChange={(e) => setSelectedBundle(e.target.value)}
-              className="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-white"
-            >
-              {BUNDLE_TIER_ORDER.filter(b => availableBundles.includes(b)).map(bundle => (
-                <option key={bundle} value={bundle}>
-                  {bundle} ({categoryData[bundle]?.avgCPL.toFixed(2)} KD/listing)
-                </option>
-              ))}
-            </select>
+            <div className="flex items-center justify-between mb-3">
+              <label className="block text-sm text-slate-400">Pricing Mode</label>
+              <button
+                onClick={() => setIsMultiBundleMode(!isMultiBundleMode)}
+                className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                  isMultiBundleMode
+                    ? 'bg-purple-600 text-white'
+                    : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+                }`}
+              >
+                {isMultiBundleMode ? 'Multi-Bundle Mode' : 'Single Bundle Mode'}
+              </button>
+            </div>
+
+            {!isMultiBundleMode ? (
+              <div>
+                <label className="block text-sm text-slate-400 mb-2">Select Bundle to Analyze</label>
+                <select
+                  value={selectedBundle}
+                  onChange={(e) => setSelectedBundle(e.target.value)}
+                  className="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-white"
+                >
+                  {BUNDLE_TIER_ORDER.filter(b => availableBundles.includes(b)).map(bundle => (
+                    <option key={bundle} value={bundle}>
+                      {bundle} ({categoryData[bundle]?.avgCPL.toFixed(2)} KD/listing)
+                    </option>
+                  ))}
+                </select>
+              </div>
+            ) : (
+              <div>
+                <label className="block text-sm text-slate-400 mb-2">Select Bundles to Modify</label>
+                <div className="space-y-2 max-h-60 overflow-y-auto">
+                  {BUNDLE_TIER_ORDER.filter(b => availableBundles.includes(b)).map(bundle => (
+                    <label key={bundle} className="flex items-center gap-3 p-2 rounded-lg hover:bg-slate-700/50 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={selectedBundles[bundle] || false}
+                        onChange={(e) => {
+                          setSelectedBundles({
+                            ...selectedBundles,
+                            [bundle]: e.target.checked
+                          });
+                          // Initialize default values if selecting for first time
+                          if (e.target.checked) {
+                            if (!bundlePriceChanges[bundle]) {
+                              setBundlePriceChanges({ ...bundlePriceChanges, [bundle]: 0 });
+                            }
+                            if (!bundleChurnRates[bundle]) {
+                              setBundleChurnRates({ ...bundleChurnRates, [bundle]: 10 });
+                            }
+                          }
+                        }}
+                        className="w-4 h-4 rounded border-slate-600 bg-slate-700 text-purple-600"
+                      />
+                      <span className="flex-1 text-sm text-white">
+                        {bundle}
+                        <span className="text-xs text-slate-400 ml-2">
+                          ({categoryData[bundle]?.avgCPL.toFixed(2)} KD, {categoryData[bundle]?.totalListings} listings)
+                        </span>
+                      </span>
+                    </label>
+                  ))}
+                </div>
+                <div className="text-xs text-slate-500 mt-2">
+                  {Object.values(selectedBundles).filter(Boolean).length} bundle(s) selected
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
         {/* Bundle Position Indicator */}
         <div className="bg-slate-800 rounded-lg p-4 mb-6">
-          <div className="text-sm text-slate-400 mb-3">Bundle Tier Position for {selectedCategory}</div>
+          <div className="text-sm text-slate-400 mb-3">
+            {isMultiBundleMode ? 'Selected Bundles' : 'Bundle Tier Position'} for {selectedCategory}
+          </div>
           <div className="flex items-center gap-2 overflow-x-auto pb-2">
             {BUNDLE_TIER_ORDER.filter(b => availableBundles.includes(b)).map((bundle, i) => (
               <div
                 key={bundle}
                 className={`px-3 py-2 rounded-lg text-sm whitespace-nowrap ${
-                  bundle === selectedBundle
+                  isMultiBundleMode
+                    ? selectedBundles[bundle]
+                      ? 'bg-purple-600 text-white font-semibold'
+                      : 'bg-slate-700 text-slate-400'
+                    : bundle === selectedBundle
                     ? 'bg-blue-600 text-white font-semibold'
                     : higherBundles.includes(bundle)
                     ? 'bg-emerald-900/50 text-emerald-400 border border-emerald-700'
@@ -1984,11 +3173,13 @@ Plumber,Super,80`;
               </div>
             ))}
           </div>
-          <div className="flex gap-4 mt-2 text-xs">
-            <span className="text-emerald-400">↑ Upgrade options</span>
-            <span className="text-blue-400">● Selected</span>
-            <span className="text-amber-400">↓ Downgrade options</span>
-          </div>
+          {!isMultiBundleMode && (
+            <div className="flex gap-4 mt-2 text-xs">
+              <span className="text-emerald-400">↑ Upgrade options</span>
+              <span className="text-blue-400">● Selected</span>
+              <span className="text-amber-400">↓ Downgrade options</span>
+            </div>
+          )}
         </div>
 
         {/* Key Metrics */}
@@ -2107,21 +3298,39 @@ Plumber,Super,80`;
         <div className="grid md:grid-cols-3 gap-4 mb-6">
           {/* Controls */}
           <div className="bg-slate-800 rounded-lg p-4">
-            <h2 className="text-lg font-semibold mb-4">Scenario Controls</h2>
-            
+            <h2 className="text-lg font-semibold mb-4">
+              {isMultiBundleMode ? 'Multi-Bundle Controls' : 'Scenario Controls'}
+            </h2>
+
+            {!isMultiBundleMode ? (
             <div className="space-y-4">
               <div>
                 <label className="block text-sm text-slate-400 mb-1">
                   Price Change: <span className="text-emerald-400 font-bold">{priceChange > 0 ? '+' : ''}{priceChange}%</span>
                 </label>
-                <input
-                  type="range"
-                  min="-30"
-                  max="50"
-                  value={priceChange}
-                  onChange={(e) => setPriceChange(Number(e.target.value))}
-                  className="w-full h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer"
-                />
+                <div className="flex gap-2 items-center">
+                  <input
+                    type="range"
+                    min="-100"
+                    max="500"
+                    step="0.1"
+                    value={priceChange}
+                    onChange={(e) => setPriceChange(Number(e.target.value))}
+                    className="flex-1 h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer"
+                  />
+                  <input
+                    type="number"
+                    min="-100"
+                    max="500"
+                    step="0.1"
+                    value={priceChange}
+                    onChange={(e) => {
+                      const val = Number(e.target.value);
+                      setPriceChange(Math.max(-100, Math.min(500, val)));
+                    }}
+                    className="w-20 bg-slate-700 border border-slate-600 rounded px-2 py-1 text-white text-sm"
+                  />
+                </div>
                 <div className="text-xs text-slate-500">New CPL: {results.newCPL.toFixed(2)} KD</div>
               </div>
               
@@ -2129,14 +3338,29 @@ Plumber,Super,80`;
                 <label className="block text-sm text-slate-400 mb-1">
                   Churn Rate: <span className="text-red-400 font-bold">{churnRate}%</span>
                 </label>
-                <input
-                  type="range"
-                  min="0"
-                  max="50"
-                  value={churnRate}
-                  onChange={(e) => setChurnRate(Number(e.target.value))}
-                  className="w-full h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer"
-                />
+                <div className="flex gap-2 items-center">
+                  <input
+                    type="range"
+                    min="-100"
+                    max="500"
+                    step="0.1"
+                    value={churnRate}
+                    onChange={(e) => setChurnRate(Number(e.target.value))}
+                    className="flex-1 h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer"
+                  />
+                  <input
+                    type="number"
+                    min="-100"
+                    max="500"
+                    step="0.1"
+                    value={churnRate}
+                    onChange={(e) => {
+                      const val = Number(e.target.value);
+                      setChurnRate(Math.max(-100, Math.min(500, val)));
+                    }}
+                    className="w-20 bg-slate-700 border border-slate-600 rounded px-2 py-1 text-white text-sm"
+                  />
+                </div>
                 <div className="text-xs text-slate-500">Leave entirely: {Math.round(results.churnedListings)} listings</div>
               </div>
               
@@ -2155,17 +3379,35 @@ Plumber,Super,80`;
                             {downgradeRates[bundle] || 0}% → {categoryData[bundle]?.avgCPL.toFixed(2)} KD
                           </span>
                         </div>
-                        <input
-                          type="range"
-                          min="0"
-                          max="30"
-                          value={downgradeRates[bundle] || 0}
-                          onChange={(e) => setDowngradeRates({
-                            ...downgradeRates,
-                            [bundle]: Number(e.target.value)
-                          })}
-                          className="w-full h-1.5 bg-slate-600 rounded-lg appearance-none cursor-pointer"
-                        />
+                        <div className="flex gap-2 items-center">
+                          <input
+                            type="range"
+                            min="-100"
+                            max="500"
+                            step="0.1"
+                            value={downgradeRates[bundle] || 0}
+                            onChange={(e) => setDowngradeRates({
+                              ...downgradeRates,
+                              [bundle]: Number(e.target.value)
+                            })}
+                            className="flex-1 h-1.5 bg-slate-600 rounded-lg appearance-none cursor-pointer"
+                          />
+                          <input
+                            type="number"
+                            min="-100"
+                            max="500"
+                            step="0.1"
+                            value={downgradeRates[bundle] || 0}
+                            onChange={(e) => {
+                              const val = Number(e.target.value);
+                              setDowngradeRates({
+                                ...downgradeRates,
+                                [bundle]: Math.max(-100, Math.min(500, val))
+                              });
+                            }}
+                            className="w-16 bg-slate-700 border border-slate-600 rounded px-2 py-1 text-white text-xs"
+                          />
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -2187,17 +3429,35 @@ Plumber,Super,80`;
                             {upgradeRates[bundle] || 0}% → {categoryData[bundle]?.avgCPL.toFixed(2)} KD
                           </span>
                         </div>
-                        <input
-                          type="range"
-                          min="0"
-                          max="20"
-                          value={upgradeRates[bundle] || 0}
-                          onChange={(e) => setUpgradeRates({
-                            ...upgradeRates,
-                            [bundle]: Number(e.target.value)
-                          })}
-                          className="w-full h-1.5 bg-slate-600 rounded-lg appearance-none cursor-pointer"
-                        />
+                        <div className="flex gap-2 items-center">
+                          <input
+                            type="range"
+                            min="-100"
+                            max="500"
+                            step="0.1"
+                            value={upgradeRates[bundle] || 0}
+                            onChange={(e) => setUpgradeRates({
+                              ...upgradeRates,
+                              [bundle]: Number(e.target.value)
+                            })}
+                            className="flex-1 h-1.5 bg-slate-600 rounded-lg appearance-none cursor-pointer"
+                          />
+                          <input
+                            type="number"
+                            min="-100"
+                            max="500"
+                            step="0.1"
+                            value={upgradeRates[bundle] || 0}
+                            onChange={(e) => {
+                              const val = Number(e.target.value);
+                              setUpgradeRates({
+                                ...upgradeRates,
+                                [bundle]: Math.max(-100, Math.min(500, val))
+                              });
+                            }}
+                            className="w-16 bg-slate-700 border border-slate-600 rounded px-2 py-1 text-white text-xs"
+                          />
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -2225,7 +3485,7 @@ Plumber,Super,80`;
               {addOnData[selectedCategory] && Object.keys(addOnData[selectedCategory]).length > 0 && (
                 <div className="border-t border-slate-700 pt-3">
                   <label className="block text-sm text-slate-400 mb-2">
-                    Add-On Loss Rates for {selectedCategory}
+                    Add-On Revenue Change % for {selectedCategory}
                   </label>
                   <div className="space-y-2">
                     {Object.entries(addOnData[selectedCategory])
@@ -2238,8 +3498,8 @@ Plumber,Super,80`;
                         const currentRate = addOnLossRates[selectedCategory]?.[bundle] || 0;
                         const isSelected = bundle === selectedBundle;
                         return (
-                          <div 
-                            key={bundle} 
+                          <div
+                            key={bundle}
                             className="bg-slate-700/30 rounded p-2"
                           >
                             <div className="flex justify-between items-center mb-1">
@@ -2247,22 +3507,40 @@ Plumber,Super,80`;
                                 {bundle} {isSelected && '(selected)'}
                               </span>
                               <span className="text-xs text-slate-400">
-                                {currentRate}% loss → {revenue.toFixed(0)} KD
+                                {currentRate >= 0 ? '+' : ''}{currentRate}% → {revenue.toFixed(0)} KD
                               </span>
                             </div>
-                            <input
-                              type="range"
-                              min="0"
-                              max="100"
-                              value={currentRate}
-                              onChange={(e) => {
-                                const newRates = { ...addOnLossRates };
-                                if (!newRates[selectedCategory]) newRates[selectedCategory] = {};
-                                newRates[selectedCategory][bundle] = Number(e.target.value);
-                                setAddOnLossRates(newRates);
-                              }}
-                              className="w-full h-1.5 bg-slate-600 rounded-lg appearance-none cursor-pointer"
-                            />
+                            <div className="flex gap-2 items-center">
+                              <input
+                                type="range"
+                                min="-100"
+                                max="500"
+                                step="0.1"
+                                value={currentRate}
+                                onChange={(e) => {
+                                  const newRates = { ...addOnLossRates };
+                                  if (!newRates[selectedCategory]) newRates[selectedCategory] = {};
+                                  newRates[selectedCategory][bundle] = Number(e.target.value);
+                                  setAddOnLossRates(newRates);
+                                }}
+                                className="flex-1 h-1.5 bg-slate-600 rounded-lg appearance-none cursor-pointer"
+                              />
+                              <input
+                                type="number"
+                                min="-100"
+                                max="500"
+                                step="0.1"
+                                value={currentRate}
+                                onChange={(e) => {
+                                  const val = Number(e.target.value);
+                                  const newRates = { ...addOnLossRates };
+                                  if (!newRates[selectedCategory]) newRates[selectedCategory] = {};
+                                  newRates[selectedCategory][bundle] = Math.max(-100, Math.min(500, val));
+                                  setAddOnLossRates(newRates);
+                                }}
+                                className="w-16 bg-slate-700 border border-slate-600 rounded px-2 py-1 text-white text-xs"
+                              />
+                            </div>
                           </div>
                         );
                       })
@@ -2277,12 +3555,308 @@ Plumber,Super,80`;
                 </div>
               </div>
             </div>
+            ) : (
+            <div className="space-y-4">
+              {Object.keys(selectedBundles).filter(b => selectedBundles[b]).length === 0 ? (
+                <div className="text-center text-slate-400 py-8">
+                  Select bundles above to configure price changes
+                </div>
+              ) : (
+                Object.keys(selectedBundles).filter(b => selectedBundles[b]).map(bundle => {
+                  const bundleData = categoryData[bundle];
+                  const bundleIndex = BUNDLE_TIER_ORDER.indexOf(bundle);
+                  const lowerBundlesForThis = BUNDLE_TIER_ORDER.filter((b, i) =>
+                    i > bundleIndex && availableBundles.includes(b)
+                  );
+                  const higherBundlesForThis = BUNDLE_TIER_ORDER.filter((b, i) =>
+                    i < bundleIndex && availableBundles.includes(b)
+                  );
+                  const isBottomTierThis = lowerBundlesForThis.length === 0;
+                  const isTopTierThis = higherBundlesForThis.length === 0;
+
+                  return (
+                    <div key={bundle} className="border border-purple-700 rounded-lg p-3 bg-purple-900/10">
+                      <div className="font-semibold text-purple-400 mb-3 flex items-center justify-between">
+                        <span>{bundle}</span>
+                        <span className="text-xs text-slate-400">
+                          {bundleData?.avgCPL.toFixed(2)} KD, {bundleData?.totalListings} listings
+                        </span>
+                      </div>
+
+                      {/* Price Change */}
+                      <div className="mb-3">
+                        <label className="block text-xs text-slate-400 mb-1">
+                          Price Change: <span className="text-emerald-400 font-bold">
+                            {(bundlePriceChanges[bundle] || 0) > 0 ? '+' : ''}{bundlePriceChanges[bundle] || 0}%
+                          </span>
+                        </label>
+                        <div className="flex gap-2 items-center">
+                          <input
+                            type="range"
+                            min="-100"
+                            max="500"
+                            step="0.1"
+                            value={bundlePriceChanges[bundle] || 0}
+                            onChange={(e) => setBundlePriceChanges({
+                              ...bundlePriceChanges,
+                              [bundle]: Number(e.target.value)
+                            })}
+                            className="flex-1 h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer"
+                          />
+                          <input
+                            type="number"
+                            min="-100"
+                            max="500"
+                            step="0.1"
+                            value={bundlePriceChanges[bundle] || 0}
+                            onChange={(e) => {
+                              const val = Number(e.target.value);
+                              setBundlePriceChanges({
+                                ...bundlePriceChanges,
+                                [bundle]: Math.max(-100, Math.min(500, val))
+                              });
+                            }}
+                            className="w-16 bg-slate-700 border border-slate-600 rounded px-2 py-1 text-white text-xs"
+                          />
+                        </div>
+                      </div>
+
+                      {/* Churn Rate */}
+                      <div className="mb-3">
+                        <label className="block text-xs text-slate-400 mb-1">
+                          Churn Rate: <span className="text-red-400 font-bold">{bundleChurnRates[bundle] || 0}%</span>
+                        </label>
+                        <div className="flex gap-2 items-center">
+                          <input
+                            type="range"
+                            min="-100"
+                            max="500"
+                            step="0.1"
+                            value={bundleChurnRates[bundle] || 0}
+                            onChange={(e) => setBundleChurnRates({
+                              ...bundleChurnRates,
+                              [bundle]: Number(e.target.value)
+                            })}
+                            className="flex-1 h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer"
+                          />
+                          <input
+                            type="number"
+                            min="-100"
+                            max="500"
+                            step="0.1"
+                            value={bundleChurnRates[bundle] || 0}
+                            onChange={(e) => {
+                              const val = Number(e.target.value);
+                              setBundleChurnRates({
+                                ...bundleChurnRates,
+                                [bundle]: Math.max(-100, Math.min(500, val))
+                              });
+                            }}
+                            className="w-16 bg-slate-700 border border-slate-600 rounded px-2 py-1 text-white text-xs"
+                          />
+                        </div>
+                      </div>
+
+                      {/* Downgrade Rates */}
+                      {!isBottomTierThis && lowerBundlesForThis.length > 0 && (
+                        <div className="mb-3 border-t border-slate-700 pt-2">
+                          <label className="block text-xs text-slate-400 mb-2">Downgrade To:</label>
+                          <div className="space-y-2">
+                            {lowerBundlesForThis.map(targetBundle => (
+                              <div key={targetBundle}>
+                                <div className="flex justify-between items-center mb-1">
+                                  <span className="text-xs text-amber-400">{targetBundle}</span>
+                                  <span className="text-xs text-slate-400">
+                                    {bundleDowngradeRates[bundle]?.[targetBundle] || 0}%
+                                  </span>
+                                </div>
+                                <div className="flex gap-2 items-center">
+                                  <input
+                                    type="range"
+                                    min="-100"
+                                    max="500"
+                                    step="0.1"
+                                    value={bundleDowngradeRates[bundle]?.[targetBundle] || 0}
+                                    onChange={(e) => {
+                                      const newRates = { ...bundleDowngradeRates };
+                                      if (!newRates[bundle]) newRates[bundle] = {};
+                                      newRates[bundle][targetBundle] = Number(e.target.value);
+                                      setBundleDowngradeRates(newRates);
+                                    }}
+                                    className="flex-1 h-1 bg-slate-600 rounded-lg appearance-none cursor-pointer"
+                                  />
+                                  <input
+                                    type="number"
+                                    min="-100"
+                                    max="500"
+                                    step="0.1"
+                                    value={bundleDowngradeRates[bundle]?.[targetBundle] || 0}
+                                    onChange={(e) => {
+                                      const val = Number(e.target.value);
+                                      const newRates = { ...bundleDowngradeRates };
+                                      if (!newRates[bundle]) newRates[bundle] = {};
+                                      newRates[bundle][targetBundle] = Math.max(-100, Math.min(500, val));
+                                      setBundleDowngradeRates(newRates);
+                                    }}
+                                    className="w-14 bg-slate-700 border border-slate-600 rounded px-1 py-0.5 text-white text-xs"
+                                  />
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Upgrade Rates */}
+                      {!isTopTierThis && higherBundlesForThis.length > 0 && (
+                        <div className="border-t border-slate-700 pt-2">
+                          <label className="block text-xs text-slate-400 mb-2">Upgrade To:</label>
+                          <div className="space-y-2">
+                            {higherBundlesForThis.map(targetBundle => (
+                              <div key={targetBundle}>
+                                <div className="flex justify-between items-center mb-1">
+                                  <span className="text-xs text-blue-400">{targetBundle}</span>
+                                  <span className="text-xs text-slate-400">
+                                    {bundleUpgradeRates[bundle]?.[targetBundle] || 0}%
+                                  </span>
+                                </div>
+                                <div className="flex gap-2 items-center">
+                                  <input
+                                    type="range"
+                                    min="-100"
+                                    max="500"
+                                    step="0.1"
+                                    value={bundleUpgradeRates[bundle]?.[targetBundle] || 0}
+                                    onChange={(e) => {
+                                      const newRates = { ...bundleUpgradeRates };
+                                      if (!newRates[bundle]) newRates[bundle] = {};
+                                      newRates[bundle][targetBundle] = Number(e.target.value);
+                                      setBundleUpgradeRates(newRates);
+                                    }}
+                                    className="flex-1 h-1 bg-slate-600 rounded-lg appearance-none cursor-pointer"
+                                  />
+                                  <input
+                                    type="number"
+                                    min="-100"
+                                    max="500"
+                                    step="0.1"
+                                    value={bundleUpgradeRates[bundle]?.[targetBundle] || 0}
+                                    onChange={(e) => {
+                                      const val = Number(e.target.value);
+                                      const newRates = { ...bundleUpgradeRates };
+                                      if (!newRates[bundle]) newRates[bundle] = {};
+                                      newRates[bundle][targetBundle] = Math.max(-100, Math.min(500, val));
+                                      setBundleUpgradeRates(newRates);
+                                    }}
+                                    className="w-14 bg-slate-700 border border-slate-600 rounded px-1 py-0.5 text-white text-xs"
+                                  />
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })
+              )}
+
+              {/* Fixed KD Loss - shared across modes */}
+              <div className="border-t border-slate-700 pt-3">
+                <label className="block text-sm text-slate-400 mb-1">
+                  Fixed KD Loss: <span className="text-red-400 font-bold">{fixedKDLoss.toLocaleString()} KD</span>
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  step="100"
+                  value={fixedKDLoss}
+                  onChange={(e) => setFixedKDLoss(Number(e.target.value) || 0)}
+                  placeholder="0"
+                  className="w-full bg-slate-700 border border-slate-600 rounded px-3 py-1.5 text-white text-sm"
+                />
+                <div className="text-xs text-slate-500 mt-1">Additional fixed costs/losses</div>
+              </div>
+
+              {/* Add-On Loss Rates for All Bundles in Category - Multi-Bundle Mode */}
+              {addOnData[selectedCategory] && Object.keys(addOnData[selectedCategory]).length > 0 && (
+                <div className="border-t border-slate-700 pt-3">
+                  <label className="block text-sm text-slate-400 mb-2">
+                    Add-On Revenue Change % for {selectedCategory}
+                  </label>
+                  <div className="space-y-2">
+                    {Object.entries(addOnData[selectedCategory])
+                      .sort((a, b) => {
+                        const orderA = BUNDLE_TIER_ORDER.indexOf(a[0]);
+                        const orderB = BUNDLE_TIER_ORDER.indexOf(b[0]);
+                        return (orderA === -1 ? 999 : orderA) - (orderB === -1 ? 999 : orderB);
+                      })
+                      .map(([bundle, revenue]) => {
+                        const currentRate = addOnLossRates[selectedCategory]?.[bundle] || 0;
+                        const isSelected = selectedBundles[bundle];
+                        return (
+                          <div
+                            key={bundle}
+                            className={`bg-slate-700/30 rounded p-2 ${isSelected ? 'border border-purple-700/50' : ''}`}
+                          >
+                            <div className="flex justify-between items-center mb-1">
+                              <span className={`text-xs ${isSelected ? 'text-purple-400' : 'text-purple-300'}`}>
+                                {bundle} {isSelected && '(selected)'}
+                              </span>
+                              <span className="text-xs text-slate-400">
+                                {currentRate >= 0 ? '+' : ''}{currentRate}% → {revenue.toFixed(0)} KD
+                              </span>
+                            </div>
+                            <div className="flex gap-2 items-center">
+                              <input
+                                type="range"
+                                min="-100"
+                                max="500"
+                                step="0.1"
+                                value={currentRate}
+                                onChange={(e) => {
+                                  const newRates = { ...addOnLossRates };
+                                  if (!newRates[selectedCategory]) newRates[selectedCategory] = {};
+                                  newRates[selectedCategory][bundle] = Number(e.target.value);
+                                  setAddOnLossRates(newRates);
+                                }}
+                                className="flex-1 h-1.5 bg-slate-600 rounded-lg appearance-none cursor-pointer"
+                              />
+                              <input
+                                type="number"
+                                min="-100"
+                                max="500"
+                                step="0.1"
+                                value={currentRate}
+                                onChange={(e) => {
+                                  const val = Number(e.target.value);
+                                  const newRates = { ...addOnLossRates };
+                                  if (!newRates[selectedCategory]) newRates[selectedCategory] = {};
+                                  newRates[selectedCategory][bundle] = Math.max(-100, Math.min(500, val));
+                                  setAddOnLossRates(newRates);
+                                }}
+                                className="w-16 bg-slate-700 border border-slate-600 rounded px-2 py-1 text-white text-xs"
+                              />
+                            </div>
+                          </div>
+                        );
+                      })
+                    }
+                  </div>
+                </div>
+              )}
+            </div>
+            )}
           </div>
 
           {/* Results */}
           <div className="bg-slate-800 rounded-lg p-4">
-            <h2 className="text-lg font-semibold mb-4">Projected Impact</h2>
-            
+            <h2 className="text-lg font-semibold mb-4">
+              {isMultiBundleMode ? 'Portfolio Impact' : 'Projected Impact'}
+            </h2>
+
+            {!isMultiBundleMode && results ? (
+            <div>
             <div className={`p-4 rounded-lg mb-4 ${results.netRevenueChange >= 0 ? 'bg-emerald-900/30 border border-emerald-700' : 'bg-red-900/30 border border-red-700'}`}>
               <div className="text-sm text-slate-400">Net Revenue Change</div>
               <div className={`text-2xl font-bold ${results.netRevenueChange >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
@@ -2328,12 +3902,122 @@ Plumber,Super,80`;
                 <span className="font-semibold">{Math.round(results.newCategoryRevenue).toLocaleString()} KD</span>
               </div>
             </div>
+            </div>
+            ) : isMultiBundleMode && multiBundleResults ? (
+            <div>
+              {/* Category Totals */}
+              <div className={`p-4 rounded-lg mb-4 ${multiBundleResults.categoryTotals.netChange >= 0 ? 'bg-emerald-900/30 border border-emerald-700' : 'bg-red-900/30 border border-red-700'}`}>
+                <div className="text-sm text-slate-400">Net Category Change</div>
+                <div className={`text-2xl font-bold ${multiBundleResults.categoryTotals.netChange >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                  {multiBundleResults.categoryTotals.netChange >= 0 ? '+' : ''}
+                  {Math.round(multiBundleResults.categoryTotals.netChange).toLocaleString()} KD
+                </div>
+                <div className={`text-sm ${multiBundleResults.categoryTotals.percentChange >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>
+                  {multiBundleResults.categoryTotals.percentChange >= 0 ? '+' : ''}
+                  {multiBundleResults.categoryTotals.percentChange.toFixed(2)}% change
+                </div>
+              </div>
+
+              {/* Cannibalization Warning */}
+              {multiBundleResults.cannibalization > 0 && (
+                <div className="bg-amber-900/30 border border-amber-700 rounded-lg p-3 mb-4">
+                  <div className="text-xs text-amber-400 font-semibold mb-1">⚠️ Cannibalization Alert</div>
+                  <div className="text-sm text-amber-300">
+                    {Math.round(multiBundleResults.cannibalization).toLocaleString()} KD lost to cross-bundle migration
+                  </div>
+                  <div className="text-xs text-slate-400 mt-1">
+                    Revenue lost when customers migrate between price-changed bundles
+                  </div>
+                </div>
+              )}
+
+              {/* Bundle Breakdown Table */}
+              <div className="max-h-96 overflow-y-auto">
+                <table className="w-full text-xs">
+                  <thead className="sticky top-0 bg-slate-700">
+                    <tr>
+                      <th className="text-left p-2 text-slate-400">Bundle</th>
+                      <th className="text-right p-2 text-slate-400">Price Δ</th>
+                      <th className="text-right p-2 text-slate-400">Listings</th>
+                      <th className="text-right p-2 text-slate-400">Revenue Δ</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {BUNDLE_TIER_ORDER
+                      .filter(b => multiBundleResults.byBundle[b])
+                      .map(bundle => {
+                        const result = multiBundleResults.byBundle[bundle];
+                        return (
+                          <tr key={bundle} className={`border-b border-slate-700 ${result.isSelected ? 'bg-purple-900/20' : ''}`}>
+                            <td className="p-2">
+                              <span className={result.isSelected ? 'text-purple-400 font-semibold' : 'text-white'}>
+                                {bundle}
+                              </span>
+                            </td>
+                            <td className="text-right p-2">
+                              <span className={result.priceChangePercent !== 0 ? 'text-emerald-400' : 'text-slate-500'}>
+                                {result.priceChangePercent > 0 ? '+' : ''}{result.priceChangePercent}%
+                              </span>
+                            </td>
+                            <td className="text-right p-2">
+                              <div className="text-white">{Math.round(result.projectedListings)}</div>
+                              <div className={`text-xs ${result.listingChange >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                                {result.listingChange >= 0 ? '+' : ''}{Math.round(result.listingChange)}
+                              </div>
+                            </td>
+                            <td className="text-right p-2">
+                              <div className={`font-semibold ${result.totalRevenueChange >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                                {result.totalRevenueChange >= 0 ? '+' : ''}
+                                {Math.round(result.totalRevenueChange).toLocaleString()}
+                              </div>
+                              <div className="text-xs text-slate-400">
+                                {result.percentChange >= 0 ? '+' : ''}{result.percentChange.toFixed(1)}%
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Category Summary */}
+              <div className="mt-4 pt-3 border-t border-slate-700 space-y-2">
+                <div className="flex justify-between text-sm">
+                  <span className="text-slate-400">Current Revenue</span>
+                  <span className="font-semibold">{Math.round(multiBundleResults.categoryTotals.currentRevenue).toLocaleString()} KD</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-slate-400">Projected Revenue</span>
+                  <span className="font-semibold">{Math.round(multiBundleResults.categoryTotals.projectedRevenue).toLocaleString()} KD</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-slate-400">Add-On Revenue Change</span>
+                  <span className={`font-semibold ${multiBundleResults.categoryTotals.addOnRevenueChange >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                    {multiBundleResults.categoryTotals.addOnRevenueChange >= 0 ? '+' : ''}
+                    {Math.round(multiBundleResults.categoryTotals.addOnRevenueChange).toLocaleString()} KD
+                  </span>
+                </div>
+                {fixedKDLoss > 0 && (
+                  <div className="flex justify-between text-sm">
+                    <span className="text-slate-400">Fixed Loss</span>
+                    <span className="text-red-400">-{fixedKDLoss.toLocaleString()} KD</span>
+                  </div>
+                )}
+              </div>
+            </div>
+            ) : (
+            <div className="text-center text-slate-400 py-8">
+              {isMultiBundleMode ? 'Select bundles to see portfolio impact' : 'Configure scenario to see results'}
+            </div>
+            )}
           </div>
 
           {/* Insights */}
           <div className="bg-slate-800 rounded-lg p-4">
             <h2 className="text-lg font-semibold mb-4">Key Insights</h2>
-            
+
+            {!isMultiBundleMode && results ? (
             <div className="space-y-3">
               <div className="bg-slate-700/50 rounded-lg p-3">
                 <div className="text-xs text-slate-400">Break-Even Churn (no migration)</div>
@@ -2366,6 +4050,58 @@ Plumber,Super,80`;
                 )}
               </div>
             </div>
+            ) : isMultiBundleMode && multiBundleResults ? (
+            <div className="space-y-3">
+              <div className="bg-slate-700/50 rounded-lg p-3">
+                <div className="text-xs text-slate-400">Bundles Modified</div>
+                <div className="text-xl font-bold text-purple-400">
+                  {Object.values(selectedBundles).filter(Boolean).length}
+                </div>
+                <div className="text-xs text-slate-500">
+                  out of {BUNDLE_TIER_ORDER.filter(b => availableBundles.includes(b)).length} available
+                </div>
+              </div>
+
+              <div className="bg-slate-700/50 rounded-lg p-3">
+                <div className="text-xs text-slate-400">Average Price Increase</div>
+                <div className="text-lg font-bold text-emerald-400">
+                  +{(Object.values(selectedBundles)
+                    .filter(Boolean)
+                    .reduce((sum, _, i) => {
+                      const bundle = Object.keys(selectedBundles).filter(b => selectedBundles[b])[i];
+                      return sum + (bundlePriceChanges[bundle] || 0);
+                    }, 0) / Math.max(1, Object.values(selectedBundles).filter(Boolean).length)).toFixed(1)}%
+                </div>
+                <div className="text-xs text-slate-500">across selected bundles</div>
+              </div>
+
+              <div className={`rounded-lg p-3 ${multiBundleResults.categoryTotals.netChange >= 0 ? 'bg-emerald-900/30' : 'bg-red-900/30'}`}>
+                <div className="text-xs text-slate-400">Portfolio Recommendation</div>
+                {multiBundleResults.categoryTotals.netChange >= 0 ? (
+                  <div className="text-sm text-emerald-400">
+                    ✓ Portfolio changes increase overall revenue
+                  </div>
+                ) : (
+                  <div className="text-sm text-red-400">
+                    ✗ Portfolio changes decrease revenue - adjust strategy
+                  </div>
+                )}
+              </div>
+
+              {multiBundleResults.cannibalization > 50000 && (
+                <div className="rounded-lg p-3 bg-amber-900/30">
+                  <div className="text-xs text-slate-400">Cannibalization Warning</div>
+                  <div className="text-sm text-amber-300">
+                    High cross-bundle migration reducing gains
+                  </div>
+                </div>
+              )}
+            </div>
+            ) : (
+            <div className="text-center text-slate-400 py-8 text-sm">
+              {isMultiBundleMode ? 'Select bundles to see insights' : 'Configure scenario to see insights'}
+            </div>
+            )}
           </div>
         </div>
 
@@ -2435,82 +4171,141 @@ Plumber,Super,80`;
           
           {showCalculations && (
             <div className="mt-4 space-y-4 text-sm">
+              {/* Worked Example */}
+              <div className="bg-slate-900 rounded-lg p-4 border border-slate-700">
+                <h4 className="font-semibold text-cyan-400 mb-3">Worked Example (simple round numbers)</h4>
+
+                <div className="space-y-4">
+                  <div>
+                    <h5 className="text-slate-300 font-semibold mb-1">Single Bundle</h5>
+                    <pre className="text-slate-400 text-xs overflow-x-auto whitespace-pre-wrap">
+{`Standard: 100 listings × 10 KD = 1,000 KD revenue. Add-on revenue: 200 KD.
+Price +20% → 12 KD. Add-on change: -50%.
+Rates: 5% churn, 10% downgrade to Basic (8 KD), 5% upgrade to Premium (15 KD)
+
+CPL Revenue:
+  80 stay × 12      = 960 KD
+  10 downgrade × 8  =  80 KD
+   5 upgrade × 15   =  75 KD
+   5 churn           =   0 KD (they left, no revenue)
+  CPL total: 960 + 80 + 75 = 1,115 KD (was 1,000 KD)
+
+Add-On Revenue (per-listing approach):
+  Per-listing add-on: 200 KD / 100 listings = 2 KD/listing
+  Adjusted rate: 2 KD × (1 + (-50%)) = 1 KD/listing
+  Staying listings: 80
+  New add-on revenue: 1 KD × 80 = 80 KD (was 200 KD)
+  Add-on change: -120 KD
+
+Net change: (1,115 - 1,000) + (-120) = -5 KD (-0.5%)`}
+                    </pre>
+                  </div>
+
+                  <div className="border-t border-slate-700 pt-4">
+                    <h5 className="text-slate-300 font-semibold mb-1">Multi-Bundle (same category, two bundles changed)</h5>
+                    <pre className="text-slate-400 text-xs overflow-x-auto whitespace-pre-wrap">
+{`Category:
+  Basic:    200 listings × 5 KD  = 1,000 KD
+  Standard: 100 listings × 10 KD = 1,000 KD
+  Premium:   50 listings × 20 KD = 1,000 KD
+  Category total: 3,000 KD
+
+Changes: Basic +20% → 6 KD, Standard +10% → 11 KD, Premium unchanged
+
+Basic (5% churn, 0% downgrade, 3% upgrade to Standard):
+  Outgoing: 10 churn, 6 upgrade to Standard
+  Incoming: 8 downgrades from Standard
+  Final: (200 - 10 - 6 + 8) = 192 listings × 6 KD = 1,152 KD (was 1,000)
+
+Standard (5% churn, 8% downgrade to Basic, 3% upgrade to Premium):
+  Outgoing: 5 churn, 8 downgrade to Basic, 3 upgrade to Premium
+  Incoming: 6 upgrades from Basic
+  Final: (100 - 5 - 8 - 3 + 6) = 90 listings × 11 KD = 990 KD (was 1,000)
+
+Premium (unchanged, no rates applied):
+  Incoming: 3 upgrades from Standard
+  Final: (50 + 3) = 53 listings × 20 KD = 1,060 KD (was 1,000)
+
+Category total: 3,202 KD vs 3,000 KD → +202 KD (+6.7%)
+
+Key: customers migrating between bundles are tracked both ways —
+Standard's 8 downgrades become Basic's 8 incoming listings, and
+Basic's 6 upgrades become Standard's 6 incoming listings.`}
+                    </pre>
+                  </div>
+                </div>
+              </div>
+
               <div className="bg-slate-900 rounded-lg p-4">
-                <h4 className="font-semibold text-blue-400 mb-2">Step 1: New Price Calculation</h4>
+                <h4 className="font-semibold text-blue-400 mb-2">Step 1: New Price</h4>
                 <pre className="text-slate-300 overflow-x-auto">
-{`newCPL = currentCPL × (1 + priceChange/100)
-newCPL = ${results.currentCPL.toFixed(2)} × (1 + ${priceChange}/100)
-newCPL = ${results.currentCPL.toFixed(2)} × ${(1 + priceChange/100).toFixed(2)}
-newCPL = ${results.newCPL.toFixed(2)} KD`}
+{`Current price per listing: ${results.currentCPL.toFixed(2)} KD
+Price change: +${priceChange}%
+
+New price = ${results.currentCPL.toFixed(2)} × ${(1 + priceChange/100).toFixed(2)} = ${results.newCPL.toFixed(2)} KD`}
+                </pre>
+              </div>
+
+              <div className="bg-slate-900 rounded-lg p-4">
+                <h4 className="font-semibold text-emerald-400 mb-2">Step 2: Where Do Customers Go?</h4>
+                <pre className="text-slate-300 overflow-x-auto">
+{`Total listings: ${results.currentListings}
+
+Stay:      ${results.currentListings} × ${results.stayRate.toFixed(1)}% = ${Math.round(results.stayingListings)} listings
+Churn:     ${results.currentListings} × ${results.effectiveChurn}% = ${Math.round(results.churnedListings)} listings (lost)
+Downgrade: ${results.currentListings} × ${results.effectiveDowngrade}% = ${Math.round(results.downgradeListings)} listings
+Upgrade:   ${results.currentListings} × ${results.effectiveUpgrade}% = ${Math.round(results.upgradeListings)} listings`}
+                </pre>
+              </div>
+
+              <div className="bg-slate-900 rounded-lg p-4">
+                <h4 className="font-semibold text-amber-400 mb-2">Step 3: New Revenue From Each Group</h4>
+                <pre className="text-slate-300 overflow-x-auto">
+{`Staying customers (pay the new price):
+  ${Math.round(results.stayingListings)} listings × ${results.newCPL.toFixed(2)} KD = ${Math.round(results.newBundleRevenue).toLocaleString()} KD
+
+Downgraded customers (pay the lower bundle's price):
+${lowerBundles.length > 0 ? lowerBundles.map(b => `  ${Math.round(results.downgradeDetails?.[b]?.listings || 0)} listings → ${b} @ ${(results.downgradeDetails?.[b]?.cpl || 0).toFixed(2)} KD = ${Math.round(results.downgradeDetails?.[b]?.revenue || 0).toLocaleString()} KD`).join('\n') : '  (none — this is the lowest bundle)'}
+  Total: ${Math.round(results.downgradeRevenue).toLocaleString()} KD
+
+Upgraded customers (pay the higher bundle's price):
+${higherBundles.length > 0 ? higherBundles.map(b => `  ${Math.round(results.upgradeDetails?.[b]?.listings || 0)} listings → ${b} @ ${(results.upgradeDetails?.[b]?.cpl || 0).toFixed(2)} KD = ${Math.round(results.upgradeDetails?.[b]?.revenue || 0).toLocaleString()} KD`).join('\n') : '  (none — this is the highest bundle)'}
+  Total: ${Math.round(results.upgradeRevenue).toLocaleString()} KD
+
+Churned customers: 0 KD (they left)`}
+                </pre>
+              </div>
+
+              {results.currentAddOnRevenue > 0 && (
+              <div className="bg-slate-900 rounded-lg p-4">
+                <h4 className="font-semibold text-pink-400 mb-2">Step 4: Add-On Revenue (Per-Listing)</h4>
+                <pre className="text-slate-300 overflow-x-auto">
+{`Current add-on revenue: ${results.currentAddOnRevenue.toLocaleString()} KD
+Current listings: ${results.currentListings}
+Per-listing add-on: ${results.currentAddOnRevenue.toLocaleString()} / ${results.currentListings} = ${results.avgAddOnPerListing.toFixed(2)} KD/listing
+
+Add-on revenue change: ${(results.addOnLossRate * 100) >= 0 ? '+' : ''}${(results.addOnLossRate * 100).toFixed(1)}%
+Adjusted per-listing: ${results.avgAddOnPerListing.toFixed(2)} × (1 + ${(results.addOnLossRate * 100).toFixed(1)}%) = ${results.adjustedAddOnPerListing.toFixed(2)} KD/listing
+
+Staying listings: ${Math.round(results.stayingListings)}
+New add-on revenue: ${results.adjustedAddOnPerListing.toFixed(2)} × ${Math.round(results.stayingListings)} = ${Math.round(results.newAddOnRevenue).toLocaleString()} KD
+Add-on change: ${Math.round(results.addOnRevenueChange) >= 0 ? '+' : ''}${Math.round(results.addOnRevenueChange).toLocaleString()} KD`}
+                </pre>
+              </div>
+              )}
+
+              <div className="bg-slate-900 rounded-lg p-4">
+                <h4 className="font-semibold text-purple-400 mb-2">Step {results.currentAddOnRevenue > 0 ? '5' : '4'}: Net Impact</h4>
+                <pre className="text-slate-300 overflow-x-auto">
+{`CPL revenue change = staying + downgraded + upgraded - old
+CPL change = ${Math.round(results.newBundleRevenue).toLocaleString()} + ${Math.round(results.downgradeRevenue).toLocaleString()} + ${Math.round(results.upgradeRevenue).toLocaleString()} - ${results.currentRevenue.toLocaleString()} = ${Math.round(results.cplRevenueChange).toLocaleString()} KD
+${results.currentAddOnRevenue > 0 ? `\nAdd-on revenue change: ${Math.round(results.addOnRevenueChange) >= 0 ? '+' : ''}${Math.round(results.addOnRevenueChange).toLocaleString()} KD` : ''}${fixedKDLoss > 0 ? `\nFixed KD loss: -${fixedKDLoss.toLocaleString()} KD` : ''}
+
+Net change = ${Math.round(results.cplRevenueChange).toLocaleString()}${results.currentAddOnRevenue > 0 ? ` + (${Math.round(results.addOnRevenueChange).toLocaleString()})` : ''}${fixedKDLoss > 0 ? ` - ${fixedKDLoss.toLocaleString()}` : ''} = ${Math.round(results.netRevenueChange).toLocaleString()} KD
+Percentage change: ${results.percentChange >= 0 ? '+' : ''}${results.percentChange.toFixed(2)}%`}
                 </pre>
               </div>
               
-              <div className="bg-slate-900 rounded-lg p-4">
-                <h4 className="font-semibold text-emerald-400 mb-2">Step 2: Listing Distribution</h4>
-                <pre className="text-slate-300 overflow-x-auto">
-{`Total Listings: ${results.currentListings}
-
-stayRate = 100% - churnRate - downgradeRate - upgradeRate
-stayRate = 100% - ${results.effectiveChurn}% - ${results.effectiveDowngrade}% - ${results.effectiveUpgrade}%
-stayRate = ${results.stayRate.toFixed(1)}%
-
-stayingListings = ${results.currentListings} × ${results.stayRate.toFixed(1)}% = ${Math.round(results.stayingListings)}
-churnedListings = ${results.currentListings} × ${results.effectiveChurn}% = ${Math.round(results.churnedListings)}
-downgradeListings = ${results.currentListings} × ${results.effectiveDowngrade}% = ${Math.round(results.downgradeListings)}
-upgradeListings = ${results.currentListings} × ${results.effectiveUpgrade}% = ${Math.round(results.upgradeListings)}`}
-                </pre>
-              </div>
-              
-              <div className="bg-slate-900 rounded-lg p-4">
-                <h4 className="font-semibold text-amber-400 mb-2">Step 3: Revenue Calculation</h4>
-                <pre className="text-slate-300 overflow-x-auto">
-{`Revenue from staying customers:
-newBundleRevenue = stayingListings × newCPL
-newBundleRevenue = ${Math.round(results.stayingListings)} × ${results.newCPL.toFixed(2)}
-newBundleRevenue = ${Math.round(results.newBundleRevenue).toLocaleString()} KD
-
-Revenue from downgraded customers (distributed):
-${lowerBundles.map(b => `  → ${b}: ${(downgradeRates[b] || 0)}% = ${Math.round(results.downgradeDetails?.[b]?.listings || 0)} listings × ${(results.downgradeDetails?.[b]?.cpl || 0).toFixed(2)} KD = ${Math.round(results.downgradeDetails?.[b]?.revenue || 0).toLocaleString()} KD`).join('\n')}
-Total downgradeRevenue = ${Math.round(results.downgradeRevenue).toLocaleString()} KD
-
-Revenue from upgraded customers (distributed):
-${higherBundles.map(b => `  → ${b}: ${(upgradeRates[b] || 0)}% = ${Math.round(results.upgradeDetails?.[b]?.listings || 0)} listings × ${(results.upgradeDetails?.[b]?.cpl || 0).toFixed(2)} KD = ${Math.round(results.upgradeDetails?.[b]?.revenue || 0).toLocaleString()} KD`).join('\n')}
-Total upgradeRevenue = ${Math.round(results.upgradeRevenue).toLocaleString()} KD
-
-Lost revenue (churn):
-lostRevenue = churnedListings × oldCPL
-lostRevenue = ${Math.round(results.churnedListings)} × ${results.currentCPL.toFixed(2)}
-lostRevenue = ${Math.round(results.lostRevenue).toLocaleString()} KD`}
-                </pre>
-              </div>
-              
-              <div className="bg-slate-900 rounded-lg p-4">
-                <h4 className="font-semibold text-purple-400 mb-2">Step 4: Net Impact</h4>
-                <pre className="text-slate-300 overflow-x-auto">
-{`Old ${selectedBundle} Revenue: ${results.currentRevenue.toLocaleString()} KD
-Fixed KD Loss: ${fixedKDLoss.toLocaleString()} KD
-
-netRevenueChange = (newBundleRevenue - oldRevenue) + downgradeRevenue + upgradeRevenue - fixedKDLoss
-netRevenueChange = (${Math.round(results.newBundleRevenue).toLocaleString()} - ${results.currentRevenue.toLocaleString()}) + ${Math.round(results.downgradeRevenue).toLocaleString()} + ${Math.round(results.upgradeRevenue).toLocaleString()} - ${fixedKDLoss.toLocaleString()}
-netRevenueChange = ${Math.round(results.netRevenueChange).toLocaleString()} KD
-
-Percentage Change: ${results.percentChange.toFixed(2)}% of category revenue`}
-                </pre>
-              </div>
-              
-              <div className="bg-slate-900 rounded-lg p-4">
-                <h4 className="font-semibold text-red-400 mb-2">Break-Even Formula</h4>
-                <pre className="text-slate-300 overflow-x-auto">
-{`Break-even churn (assuming no migration):
-breakEvenChurn = (priceChange × 100) / (100 + priceChange)
-breakEvenChurn = (${priceChange} × 100) / (100 + ${priceChange})
-breakEvenChurn = ${priceChange * 100} / ${100 + priceChange}
-breakEvenChurn = ${results.breakEvenChurn.toFixed(1)}%
-
-This means: at +${priceChange}% price, if more than ${results.breakEvenChurn.toFixed(1)}% 
-of customers leave (with no migration), you start losing money.`}
-                </pre>
-              </div>
             </div>
           )}
         </div>
