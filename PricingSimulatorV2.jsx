@@ -2376,18 +2376,18 @@ Plumber,Super,80`;
                                     </span>
                                   </div>
                                   <div className="flex gap-2 items-center">
-                                    <input type="range" min="-100" max="500" step="0.1"
+                                    <input type="range" min="0" max="100" step="0.1"
                                       value={portfolioDowngradeRates[bundle] || 0}
                                       onChange={(e) => setPortfolioDowngradeRates({
                                         ...portfolioDowngradeRates,
                                         [bundle]: Number(e.target.value)
                                       })}
                                       className="flex-1 h-1.5 bg-slate-600 rounded-lg appearance-none cursor-pointer" />
-                                    <input type="number" min="-100" max="500" step="0.1"
+                                    <input type="number" min="0" max="100" step="0.1"
                                       value={portfolioDowngradeRates[bundle] || 0}
                                       onChange={(e) => setPortfolioDowngradeRates({
                                         ...portfolioDowngradeRates,
-                                        [bundle]: Math.max(-100, Math.min(500, Number(e.target.value)))
+                                        [bundle]: Math.max(0, Math.min(100, Number(e.target.value)))
                                       })}
                                       className="w-16 bg-slate-700 border border-slate-600 rounded px-2 py-1 text-white text-xs" />
                                   </div>
@@ -2418,18 +2418,18 @@ Plumber,Super,80`;
                                     </span>
                                   </div>
                                   <div className="flex gap-2 items-center">
-                                    <input type="range" min="-100" max="500" step="0.1"
+                                    <input type="range" min="0" max="100" step="0.1"
                                       value={portfolioUpgradeRates[bundle] || 0}
                                       onChange={(e) => setPortfolioUpgradeRates({
                                         ...portfolioUpgradeRates,
                                         [bundle]: Number(e.target.value)
                                       })}
                                       className="flex-1 h-1.5 bg-slate-600 rounded-lg appearance-none cursor-pointer" />
-                                    <input type="number" min="-100" max="500" step="0.1"
+                                    <input type="number" min="0" max="100" step="0.1"
                                       value={portfolioUpgradeRates[bundle] || 0}
                                       onChange={(e) => setPortfolioUpgradeRates({
                                         ...portfolioUpgradeRates,
-                                        [bundle]: Math.max(-100, Math.min(500, Number(e.target.value)))
+                                        [bundle]: Math.max(0, Math.min(100, Number(e.target.value)))
                                       })}
                                       className="w-16 bg-slate-700 border border-slate-600 rounded px-2 py-1 text-white text-xs" />
                                   </div>
@@ -2592,8 +2592,8 @@ Plumber,Super,80`;
                                 <div className="flex gap-2 items-center">
                                   <input
                                     type="range"
-                                    min="-100"
-                                    max="500"
+                                    min="0"
+                                    max="100"
                                     step="0.1"
                                     value={portfolioBundleChurnRates[bundle] || 0}
                                     onChange={(e) => setPortfolioBundleChurnRates({
@@ -2604,15 +2604,15 @@ Plumber,Super,80`;
                                   />
                                   <input
                                     type="number"
-                                    min="-100"
-                                    max="500"
+                                    min="0"
+                                    max="100"
                                     step="0.1"
                                     value={portfolioBundleChurnRates[bundle] || 0}
                                     onChange={(e) => {
                                       const val = Number(e.target.value);
                                       setPortfolioBundleChurnRates({
                                         ...portfolioBundleChurnRates,
-                                        [bundle]: Math.max(-100, Math.min(500, val))
+                                        [bundle]: Math.max(0, Math.min(100, val))
                                       });
                                     }}
                                     className="w-16 bg-slate-700 border border-slate-600 rounded px-2 py-1 text-white text-xs"
@@ -2636,8 +2636,8 @@ Plumber,Super,80`;
                                         <div className="flex gap-2 items-center">
                                           <input
                                             type="range"
-                                            min="-100"
-                                            max="500"
+                                            min="0"
+                                            max="100"
                                             step="0.1"
                                             value={portfolioBundleDowngradeRates[bundle]?.[targetBundle] || 0}
                                             onChange={(e) => {
@@ -2650,15 +2650,15 @@ Plumber,Super,80`;
                                           />
                                           <input
                                             type="number"
-                                            min="-100"
-                                            max="500"
+                                            min="0"
+                                            max="100"
                                             step="0.1"
                                             value={portfolioBundleDowngradeRates[bundle]?.[targetBundle] || 0}
                                             onChange={(e) => {
                                               const val = Number(e.target.value);
                                               const newRates = { ...portfolioBundleDowngradeRates };
                                               if (!newRates[bundle]) newRates[bundle] = {};
-                                              newRates[bundle][targetBundle] = Math.max(-100, Math.min(500, val));
+                                              newRates[bundle][targetBundle] = Math.max(0, Math.min(100, val));
                                               setPortfolioBundleDowngradeRates(newRates);
                                             }}
                                             className="w-14 bg-slate-700 border border-slate-600 rounded px-1 py-0.5 text-white text-xs"
@@ -2686,8 +2686,8 @@ Plumber,Super,80`;
                                         <div className="flex gap-2 items-center">
                                           <input
                                             type="range"
-                                            min="-100"
-                                            max="500"
+                                            min="0"
+                                            max="100"
                                             step="0.1"
                                             value={portfolioBundleUpgradeRates[bundle]?.[targetBundle] || 0}
                                             onChange={(e) => {
@@ -2700,15 +2700,15 @@ Plumber,Super,80`;
                                           />
                                           <input
                                             type="number"
-                                            min="-100"
-                                            max="500"
+                                            min="0"
+                                            max="100"
                                             step="0.1"
                                             value={portfolioBundleUpgradeRates[bundle]?.[targetBundle] || 0}
                                             onChange={(e) => {
                                               const val = Number(e.target.value);
                                               const newRates = { ...portfolioBundleUpgradeRates };
                                               if (!newRates[bundle]) newRates[bundle] = {};
-                                              newRates[bundle][targetBundle] = Math.max(-100, Math.min(500, val));
+                                              newRates[bundle][targetBundle] = Math.max(0, Math.min(100, val));
                                               setPortfolioBundleUpgradeRates(newRates);
                                             }}
                                             className="w-14 bg-slate-700 border border-slate-600 rounded px-1 py-0.5 text-white text-xs"
@@ -3341,8 +3341,8 @@ Plumber,Super,80`;
                 <div className="flex gap-2 items-center">
                   <input
                     type="range"
-                    min="-100"
-                    max="500"
+                    min="0"
+                    max="100"
                     step="0.1"
                     value={churnRate}
                     onChange={(e) => setChurnRate(Number(e.target.value))}
@@ -3350,13 +3350,13 @@ Plumber,Super,80`;
                   />
                   <input
                     type="number"
-                    min="-100"
-                    max="500"
+                    min="0"
+                    max="100"
                     step="0.1"
                     value={churnRate}
                     onChange={(e) => {
                       const val = Number(e.target.value);
-                      setChurnRate(Math.max(-100, Math.min(500, val)));
+                      setChurnRate(Math.max(0, Math.min(100, val)));
                     }}
                     className="w-20 bg-slate-700 border border-slate-600 rounded px-2 py-1 text-white text-sm"
                   />
@@ -3382,8 +3382,8 @@ Plumber,Super,80`;
                         <div className="flex gap-2 items-center">
                           <input
                             type="range"
-                            min="-100"
-                            max="500"
+                            min="0"
+                            max="100"
                             step="0.1"
                             value={downgradeRates[bundle] || 0}
                             onChange={(e) => setDowngradeRates({
@@ -3394,15 +3394,15 @@ Plumber,Super,80`;
                           />
                           <input
                             type="number"
-                            min="-100"
-                            max="500"
+                            min="0"
+                            max="100"
                             step="0.1"
                             value={downgradeRates[bundle] || 0}
                             onChange={(e) => {
                               const val = Number(e.target.value);
                               setDowngradeRates({
                                 ...downgradeRates,
-                                [bundle]: Math.max(-100, Math.min(500, val))
+                                [bundle]: Math.max(0, Math.min(100, val))
                               });
                             }}
                             className="w-16 bg-slate-700 border border-slate-600 rounded px-2 py-1 text-white text-xs"
@@ -3432,8 +3432,8 @@ Plumber,Super,80`;
                         <div className="flex gap-2 items-center">
                           <input
                             type="range"
-                            min="-100"
-                            max="500"
+                            min="0"
+                            max="100"
                             step="0.1"
                             value={upgradeRates[bundle] || 0}
                             onChange={(e) => setUpgradeRates({
@@ -3444,15 +3444,15 @@ Plumber,Super,80`;
                           />
                           <input
                             type="number"
-                            min="-100"
-                            max="500"
+                            min="0"
+                            max="100"
                             step="0.1"
                             value={upgradeRates[bundle] || 0}
                             onChange={(e) => {
                               const val = Number(e.target.value);
                               setUpgradeRates({
                                 ...upgradeRates,
-                                [bundle]: Math.max(-100, Math.min(500, val))
+                                [bundle]: Math.max(0, Math.min(100, val))
                               });
                             }}
                             className="w-16 bg-slate-700 border border-slate-600 rounded px-2 py-1 text-white text-xs"
@@ -3629,8 +3629,8 @@ Plumber,Super,80`;
                         <div className="flex gap-2 items-center">
                           <input
                             type="range"
-                            min="-100"
-                            max="500"
+                            min="0"
+                            max="100"
                             step="0.1"
                             value={bundleChurnRates[bundle] || 0}
                             onChange={(e) => setBundleChurnRates({
@@ -3641,15 +3641,15 @@ Plumber,Super,80`;
                           />
                           <input
                             type="number"
-                            min="-100"
-                            max="500"
+                            min="0"
+                            max="100"
                             step="0.1"
                             value={bundleChurnRates[bundle] || 0}
                             onChange={(e) => {
                               const val = Number(e.target.value);
                               setBundleChurnRates({
                                 ...bundleChurnRates,
-                                [bundle]: Math.max(-100, Math.min(500, val))
+                                [bundle]: Math.max(0, Math.min(100, val))
                               });
                             }}
                             className="w-16 bg-slate-700 border border-slate-600 rounded px-2 py-1 text-white text-xs"
@@ -3673,8 +3673,8 @@ Plumber,Super,80`;
                                 <div className="flex gap-2 items-center">
                                   <input
                                     type="range"
-                                    min="-100"
-                                    max="500"
+                                    min="0"
+                                    max="100"
                                     step="0.1"
                                     value={bundleDowngradeRates[bundle]?.[targetBundle] || 0}
                                     onChange={(e) => {
@@ -3687,15 +3687,15 @@ Plumber,Super,80`;
                                   />
                                   <input
                                     type="number"
-                                    min="-100"
-                                    max="500"
+                                    min="0"
+                                    max="100"
                                     step="0.1"
                                     value={bundleDowngradeRates[bundle]?.[targetBundle] || 0}
                                     onChange={(e) => {
                                       const val = Number(e.target.value);
                                       const newRates = { ...bundleDowngradeRates };
                                       if (!newRates[bundle]) newRates[bundle] = {};
-                                      newRates[bundle][targetBundle] = Math.max(-100, Math.min(500, val));
+                                      newRates[bundle][targetBundle] = Math.max(0, Math.min(100, val));
                                       setBundleDowngradeRates(newRates);
                                     }}
                                     className="w-14 bg-slate-700 border border-slate-600 rounded px-1 py-0.5 text-white text-xs"
@@ -3723,8 +3723,8 @@ Plumber,Super,80`;
                                 <div className="flex gap-2 items-center">
                                   <input
                                     type="range"
-                                    min="-100"
-                                    max="500"
+                                    min="0"
+                                    max="100"
                                     step="0.1"
                                     value={bundleUpgradeRates[bundle]?.[targetBundle] || 0}
                                     onChange={(e) => {
@@ -3737,15 +3737,15 @@ Plumber,Super,80`;
                                   />
                                   <input
                                     type="number"
-                                    min="-100"
-                                    max="500"
+                                    min="0"
+                                    max="100"
                                     step="0.1"
                                     value={bundleUpgradeRates[bundle]?.[targetBundle] || 0}
                                     onChange={(e) => {
                                       const val = Number(e.target.value);
                                       const newRates = { ...bundleUpgradeRates };
                                       if (!newRates[bundle]) newRates[bundle] = {};
-                                      newRates[bundle][targetBundle] = Math.max(-100, Math.min(500, val));
+                                      newRates[bundle][targetBundle] = Math.max(0, Math.min(100, val));
                                       setBundleUpgradeRates(newRates);
                                     }}
                                     className="w-14 bg-slate-700 border border-slate-600 rounded px-1 py-0.5 text-white text-xs"
@@ -3918,18 +3918,6 @@ Plumber,Super,80`;
                 </div>
               </div>
 
-              {/* Cannibalization Warning */}
-              {multiBundleResults.cannibalization > 0 && (
-                <div className="bg-amber-900/30 border border-amber-700 rounded-lg p-3 mb-4">
-                  <div className="text-xs text-amber-400 font-semibold mb-1">⚠️ Cannibalization Alert</div>
-                  <div className="text-sm text-amber-300">
-                    {Math.round(multiBundleResults.cannibalization).toLocaleString()} KD lost to cross-bundle migration
-                  </div>
-                  <div className="text-xs text-slate-400 mt-1">
-                    Revenue lost when customers migrate between price-changed bundles
-                  </div>
-                </div>
-              )}
 
               {/* Bundle Breakdown Table */}
               <div className="max-h-96 overflow-y-auto">
@@ -4088,14 +4076,6 @@ Plumber,Super,80`;
                 )}
               </div>
 
-              {multiBundleResults.cannibalization > 50000 && (
-                <div className="rounded-lg p-3 bg-amber-900/30">
-                  <div className="text-xs text-slate-400">Cannibalization Warning</div>
-                  <div className="text-sm text-amber-300">
-                    High cross-bundle migration reducing gains
-                  </div>
-                </div>
-              )}
             </div>
             ) : (
             <div className="text-center text-slate-400 py-8 text-sm">
