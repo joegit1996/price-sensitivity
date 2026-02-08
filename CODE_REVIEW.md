@@ -18,7 +18,6 @@ This is a **feature-rich React pricing simulation tool** that has grown signific
 - Clean tab-based navigation with localStorage persistence
 - Detailed README with calculation examples
 - Debug logging cleaned up (no console.log statements remain)
-- A/B test feature now fully wired up and functional
 
 **Key Weaknesses:**
 - No backend / API — purely client-side with localStorage

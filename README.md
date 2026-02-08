@@ -11,7 +11,7 @@ All monetary values are in **KD (Kuwaiti Dinar)**.
 1. [Getting Started](#getting-started)
 2. [Tab 1: Single Category Analysis](#tab-1-single-category-analysis)
 3. [Tab 2: Custom Input](#tab-2-custom-input)
-4. [Tab 3: A/B Testing](#tab-3-ab-testing)
+4. [Tab 3: A/B Testing](#tab-3-ab-testing) - still incomplete
 5. [Tab 4: Portfolio Analysis](#tab-4-portfolio-analysis)
 6. [Calculation Logic & Examples](#calculation-logic--examples)
 7. [Technologies](#technologies)
